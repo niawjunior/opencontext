@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Electron build artifacts:
+    "dist-electron/**",
+    "dist-mcp/**",
+    "dist/**",
   ]),
 ]);
 

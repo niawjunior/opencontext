@@ -1,0 +1,90 @@
+appId: com.lightwork.open-context
+productName: Open Context
+copyright: Copyright (c) 2026 Lightwork
+
+directories:
+  buildResources: build
+  output: dist
+
+files:
+  - dist-electron/**/*
+  - dist-mcp/**/*
+  - out/**/*
+  - package.json
+
+extraResources:
+  - from: build/
+    to: .
+    filter:
+      - "!entitlements.mac.plist"
+  - from: dist-mcp/
+    to: mcp-server
+
+# ─── macOS ─────────────────────────────────────────────
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+
+dmg:
+  artifactName: "${productName}-${version}-${arch}.dmg"
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+# ─── Windows ──────────────────────────────────────────
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: true
+  artifactName: "${productName}-Setup-${version}-${arch}.exe"
+
+# ─── Linux ────────────────────────────────────────────
+linux:
+  icon: build/icons
+  category: Development
+  target:
+    - target: AppImage
+      arch:
+        - x64
+        - arm64
+    - target: deb
+      arch:
+        - x64
+        - arm64
+
+# ─── Auto-Update (GitHub Releases) ────────────────────
+publish:
+  provider: github
+  owner: OWNER_PLACEHOLDER
+  repo: open-context
+  releaseType: release
+
+# ─── Build Settings ──────────────────────────────────
+asar: true
+compression: maximum
