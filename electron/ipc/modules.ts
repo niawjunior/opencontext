@@ -87,4 +87,34 @@ export function registerModuleHandlers(store: DataStore): void {
     (_e, projectId: string, moduleId: string) =>
       store.deleteModule(projectId, moduleId)
   );
+
+  // Approve pending context — moves pendingContext → context
+  ipcMain.handle(
+    "modules:approve-pending",
+    async (_e, projectId: string, moduleId: string) => {
+      const project = await store.getProject(projectId);
+      if (!project) throw new Error(`Project ${projectId} not found`);
+      const mod = project.modules.find((m) => m.id === moduleId);
+      if (!mod) throw new Error(`Module ${moduleId} not found`);
+      if (!mod.pendingContext) throw new Error("No pending context to approve");
+
+      return store.updateModule(projectId, moduleId, {
+        context: mod.pendingContext,
+        pendingContext: "",
+        pendingContextMeta: undefined,
+        lastAnalyzedAt: new Date().toISOString(),
+      });
+    }
+  );
+
+  // Reject pending context — clears pendingContext
+  ipcMain.handle(
+    "modules:reject-pending",
+    async (_e, projectId: string, moduleId: string) => {
+      return store.updateModule(projectId, moduleId, {
+        pendingContext: "",
+        pendingContextMeta: undefined,
+      });
+    }
+  );
 }

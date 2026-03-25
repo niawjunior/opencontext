@@ -67,18 +67,23 @@ export function registerUpdateModuleContextTool(
         };
       }
 
+      const hadPending = !!mod.pendingContext;
+
       await store.updateModule(projectId, mod.id, {
-        context,
-        lastAnalyzedAt: new Date().toISOString(),
+        pendingContext: context,
+        pendingContextMeta: {
+          updatedAt: new Date().toISOString(),
+          source: "mcp",
+          previousPendingAt: hadPending ? mod.pendingContextMeta?.updatedAt : undefined,
+        },
       });
 
+      const msg = hadPending
+        ? `Context update queued for module "${mod.name}" (replaced prior pending update). Pending review in the Open Context app.`
+        : `Context update queued for module "${mod.name}" (${mod.type}) in project "${project.name}". Pending review in the Open Context app.`;
+
       return {
-        content: [
-          {
-            type: "text" as const,
-            text: `Context updated for module "${mod.name}" (${mod.type}) in project "${project.name}".`,
-          },
-        ],
+        content: [{ type: "text" as const, text: msg }],
       };
     }
   );

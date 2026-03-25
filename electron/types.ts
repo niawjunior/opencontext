@@ -55,6 +55,8 @@ export interface ElectronAPI {
       }>
     ) => Promise<Module>;
     delete: (projectId: string, moduleId: string) => Promise<void>;
+    approvePending: (projectId: string, moduleId: string) => Promise<Module>;
+    rejectPending: (projectId: string, moduleId: string) => Promise<Module>;
   };
 
   // Context

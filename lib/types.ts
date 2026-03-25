@@ -17,6 +17,12 @@ export interface Module {
   type: ModuleType;
   path: string;
   context: string;
+  pendingContext?: string;
+  pendingContextMeta?: {
+    updatedAt: string;
+    source?: string;
+    previousPendingAt?: string;
+  };
   lastUpdated: string;
   lastAnalyzedAt?: string;
 }

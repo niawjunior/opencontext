@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Tooltip,
   TooltipContent,
@@ -48,6 +47,7 @@ import {
   EmptyDescription,
   EmptyContent,
 } from "@/components/ui/empty";
+import { formatRelativeDate } from "@/lib/format";
 import type { Module, ModuleType } from "@/lib/types";
 
 const typeConfig: Record<ModuleType, { icon: React.ElementType; label: string }> = {
@@ -160,7 +160,7 @@ export function ModuleTree({
             </p>
           </div>
         ) : (
-          <ScrollArea className="flex-1">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             <Accordion
               type="multiple"
               defaultValue={Array.from(grouped.keys())}
@@ -196,20 +196,24 @@ export function ModuleTree({
                               <TooltipTrigger asChild>
                                 <span
                                   className={`h-1.5 w-1.5 rounded-full shrink-0 ${
-                                    staleModuleIds?.has(mod.id)
-                                      ? "bg-amber-500"
-                                      : mod.context
-                                        ? "bg-emerald-500"
-                                        : "bg-muted-foreground/30"
+                                    mod.pendingContext
+                                      ? "bg-amber-500 ring-2 ring-amber-500/30"
+                                      : staleModuleIds?.has(mod.id)
+                                        ? "bg-amber-500"
+                                        : mod.context
+                                          ? "bg-emerald-500"
+                                          : "bg-muted-foreground/30"
                                   }`}
                                 />
                               </TooltipTrigger>
                               <TooltipContent side="left">
-                                {staleModuleIds?.has(mod.id)
-                                  ? "Source changed — click sync to update"
-                                  : mod.context
-                                    ? "Has context"
-                                    : "No context yet"}
+                                {mod.pendingContext
+                                  ? `Pending review${mod.pendingContextMeta?.updatedAt ? ` (${formatRelativeDate(mod.pendingContextMeta.updatedAt)} via ${mod.pendingContextMeta.source || "unknown"})` : ""} — click to review`
+                                  : staleModuleIds?.has(mod.id)
+                                    ? "Source changed — click sync to update"
+                                    : mod.context
+                                      ? "Has context"
+                                      : "No context yet"}
                               </TooltipContent>
                             </Tooltip>
                             <span className="flex-1 truncate">{mod.name}</span>
@@ -263,7 +267,7 @@ export function ModuleTree({
                 );
               })}
             </Accordion>
-          </ScrollArea>
+          </div>
         )}
       </div>
 

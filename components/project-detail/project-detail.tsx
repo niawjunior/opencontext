@@ -156,6 +156,14 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
   }, [api, project, projectId, staleModuleIds]);
 
   const handleSelectModule = (mod: Module) => {
+    // If module has pending context, open review dialog
+    if (mod.pendingContext) {
+      setSyncingModule(mod);
+      setSyncResult({ oldContext: mod.context || "", newContext: mod.pendingContext });
+      setShowSyncDialog(true);
+      setSelectedModule(mod);
+      return;
+    }
     if (hasDirtyEditor && selectedModule?.id !== mod.id) {
       setPendingModule(mod);
     } else {
@@ -267,13 +275,20 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
 
   const handleAcceptSync = async (context: string) => {
     if (!api || !syncingModule) return;
-    await api.modules.update(projectId, syncingModule.id, {
-      context,
-      lastAnalyzedAt: new Date().toISOString(),
-    });
+
+    // If this was a pending context review, use the approve handler
+    if (syncingModule.pendingContext) {
+      await api.modules.approvePending(projectId, syncingModule.id);
+    } else {
+      await api.modules.update(projectId, syncingModule.id, {
+        context,
+        lastAnalyzedAt: new Date().toISOString(),
+      });
+    }
+
     await loadProject();
     if (selectedModule?.id === syncingModule.id) {
-      setSelectedModule({ ...syncingModule, context });
+      setSelectedModule({ ...syncingModule, context, pendingContext: undefined });
     }
     // Clear staleness
     setStaleModuleIds((prev) => {
@@ -285,6 +300,24 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     setSyncResult(null);
     setSyncingModule(null);
     toast.success(`Context updated for ${syncingModule.name}`);
+  };
+
+  const handleRejectSync = async () => {
+    if (!api || !syncingModule) return;
+
+    // If this was a pending context review, clear it
+    if (syncingModule.pendingContext) {
+      await api.modules.rejectPending(projectId, syncingModule.id);
+      await loadProject();
+      if (selectedModule?.id === syncingModule.id) {
+        setSelectedModule({ ...syncingModule, pendingContext: undefined });
+      }
+      toast.info(`Pending context rejected for ${syncingModule.name}`);
+    }
+
+    setShowSyncDialog(false);
+    setSyncResult(null);
+    setSyncingModule(null);
   };
 
   if (!project) {
@@ -493,10 +526,10 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
               </div>
             </Empty>
           ) : (
-            <div ref={containerRef} className="rounded-lg border flex-1 flex min-h-0">
+            <div ref={containerRef} className="rounded-lg border flex-1 flex min-h-0 max-h-[calc(100vh-16rem)]">
               {/* Left: Module Tree */}
               <div
-                className="shrink-0 overflow-hidden border-r"
+                className="shrink-0 overflow-hidden border-r h-full"
                 style={{ width: sidebarWidth }}
               >
                 <ModuleTree
@@ -667,11 +700,7 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
         oldContext={syncResult?.oldContext || ""}
         newContext={syncResult?.newContext || ""}
         onAccept={handleAcceptSync}
-        onReject={() => {
-          setShowSyncDialog(false);
-          setSyncResult(null);
-          setSyncingModule(null);
-        }}
+        onReject={handleRejectSync}
       />
 
       {/* Unsaved changes warning */}

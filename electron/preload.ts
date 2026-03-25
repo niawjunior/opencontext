@@ -46,6 +46,10 @@ const electronAPI = {
       ipcRenderer.invoke("modules:update", projectId, moduleId, data),
     delete: (projectId: string, moduleId: string): Promise<unknown> =>
       ipcRenderer.invoke("modules:delete", projectId, moduleId),
+    approvePending: (projectId: string, moduleId: string): Promise<unknown> =>
+      ipcRenderer.invoke("modules:approve-pending", projectId, moduleId),
+    rejectPending: (projectId: string, moduleId: string): Promise<unknown> =>
+      ipcRenderer.invoke("modules:reject-pending", projectId, moduleId),
   },
 
   // Context

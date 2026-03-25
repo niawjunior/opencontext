@@ -149,7 +149,7 @@ export class DataStore {
   async updateModule(
     projectId: string,
     moduleId: string,
-    data: Partial<Pick<Module, "name" | "type" | "path" | "context" | "lastAnalyzedAt">>
+    data: Partial<Pick<Module, "name" | "type" | "path" | "context" | "pendingContext" | "pendingContextMeta" | "lastAnalyzedAt">>
   ): Promise<Module> {
     const project = await this.readProjectFile(projectId);
     if (!project) throw new Error(`Project ${projectId} not found`);
