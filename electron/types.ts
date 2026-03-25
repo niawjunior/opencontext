@@ -52,6 +52,7 @@ export interface ElectronAPI {
         path: string;
         context: string;
         lastAnalyzedAt: string;
+        pendingContextMeta: { updatedAt: string; source?: string; previousPendingAt?: string } | undefined;
       }>
     ) => Promise<Module>;
     delete: (projectId: string, moduleId: string) => Promise<void>;

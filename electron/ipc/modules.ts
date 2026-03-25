@@ -24,6 +24,7 @@ export function registerModuleHandlers(store: DataStore): void {
         path: string;
         context: string;
         lastAnalyzedAt: string;
+        pendingContextMeta: { updatedAt: string; source?: string; previousPendingAt?: string } | undefined;
       }>
     ) => {
       const result = await store.updateModule(projectId, moduleId, data);

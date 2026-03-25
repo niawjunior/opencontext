@@ -197,13 +197,19 @@ async function main() {
 
     console.error(`[context-update] Affected modules: ${affectedModules.map((m) => m.name).join(", ")}`);
 
-    // Mark them as needing re-analysis (we can't run Claude CLI here,
-    // but we rebuild the full context and output which modules need attention)
+    // Mark affected modules as needing re-sync by setting pendingContextMeta
+    // The app shows an amber dot for modules with pendingContextMeta.source = "git-hook"
     const staleModules = affectedModules.filter((m) => m.context?.trim());
     if (staleModules.length > 0) {
-      console.error(`[context-update] Modules with stale context:`);
+      console.error(`[context-update] Marking ${staleModules.length} modules as stale:`);
       for (const mod of staleModules) {
         console.error(`  - ${mod.name} (${mod.type}) at ${mod.path}`);
+        await store.updateModule(project.id, mod.id, {
+          pendingContextMeta: {
+            updatedAt: new Date().toISOString(),
+            source: "git-hook",
+          },
+        });
       }
     }
 

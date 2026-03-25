@@ -198,7 +198,7 @@ export function ModuleTree({
                                   className={`h-1.5 w-1.5 rounded-full shrink-0 ${
                                     mod.pendingContext
                                       ? "bg-amber-500 ring-2 ring-amber-500/30"
-                                      : staleModuleIds?.has(mod.id)
+                                      : (staleModuleIds?.has(mod.id) || (!mod.pendingContext && mod.pendingContextMeta?.source === "git-hook"))
                                         ? "bg-amber-500"
                                         : mod.context
                                           ? "bg-emerald-500"
@@ -209,11 +209,13 @@ export function ModuleTree({
                               <TooltipContent side="left">
                                 {mod.pendingContext
                                   ? `Pending review${mod.pendingContextMeta?.updatedAt ? ` (${formatRelativeDate(mod.pendingContextMeta.updatedAt)} via ${mod.pendingContextMeta.source || "unknown"})` : ""} — click to review`
-                                  : staleModuleIds?.has(mod.id)
-                                    ? "Source changed — click sync to update"
-                                    : mod.context
-                                      ? "Has context"
-                                      : "No context yet"}
+                                  : (!mod.pendingContext && mod.pendingContextMeta?.source === "git-hook")
+                                    ? `Source changed via git push${mod.pendingContextMeta?.updatedAt ? ` (${formatRelativeDate(mod.pendingContextMeta.updatedAt)})` : ""} — click sync to update`
+                                    : staleModuleIds?.has(mod.id)
+                                      ? "Source changed — click sync to update"
+                                      : mod.context
+                                        ? "Has context"
+                                        : "No context yet"}
                               </TooltipContent>
                             </Tooltip>
                             <span className="flex-1 truncate">{mod.name}</span>

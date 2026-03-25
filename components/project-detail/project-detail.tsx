@@ -283,6 +283,7 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
       await api.modules.update(projectId, syncingModule.id, {
         context,
         lastAnalyzedAt: new Date().toISOString(),
+        pendingContextMeta: undefined,
       });
     }
 
