@@ -105,21 +105,6 @@ const electronAPI = {
       ipcRenderer.invoke("mcp:setup-git-hook", projectPath),
   },
 
-  // File Watcher
-  watcher: {
-    start: (projectId: string): Promise<unknown> =>
-      ipcRenderer.invoke("watcher:start", projectId),
-    stop: (projectId: string): Promise<unknown> =>
-      ipcRenderer.invoke("watcher:stop", projectId),
-    status: (): Promise<unknown> => ipcRenderer.invoke("watcher:status"),
-    onFileChanged: (callback: (data: unknown) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, data: unknown) =>
-        callback(data);
-      ipcRenderer.on("watcher:file-changed", handler);
-      return () => ipcRenderer.removeListener("watcher:file-changed", handler);
-    },
-  },
-
   // Settings
   settings: {
     get: (): Promise<unknown> => ipcRenderer.invoke("settings:get"),

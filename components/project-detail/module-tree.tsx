@@ -63,7 +63,6 @@ const typeConfig: Record<ModuleType, { icon: React.ElementType; label: string }>
 interface ModuleTreeProps {
   modules: Module[];
   selectedId?: string;
-  staleModuleIds?: Set<string>;
   onSelect: (module: Module) => void;
   onEdit: (module: Module) => void;
   onDelete: (moduleId: string) => void;
@@ -74,7 +73,6 @@ interface ModuleTreeProps {
 export function ModuleTree({
   modules,
   selectedId,
-  staleModuleIds,
   onSelect,
   onEdit,
   onDelete,
@@ -198,7 +196,7 @@ export function ModuleTree({
                                   className={`h-1.5 w-1.5 rounded-full shrink-0 ${
                                     mod.pendingContext
                                       ? "bg-amber-500 ring-2 ring-amber-500/30"
-                                      : (staleModuleIds?.has(mod.id) || (!mod.pendingContext && mod.pendingContextMeta?.source === "git-hook"))
+                                      : mod.pendingContextMeta?.source
                                         ? "bg-amber-500"
                                         : mod.context
                                           ? "bg-emerald-500"
@@ -209,13 +207,11 @@ export function ModuleTree({
                               <TooltipContent side="left">
                                 {mod.pendingContext
                                   ? `Pending review${mod.pendingContextMeta?.updatedAt ? ` (${formatRelativeDate(mod.pendingContextMeta.updatedAt)} via ${mod.pendingContextMeta.source || "unknown"})` : ""} — click to review`
-                                  : (!mod.pendingContext && mod.pendingContextMeta?.source === "git-hook")
-                                    ? `Source changed via git push${mod.pendingContextMeta?.updatedAt ? ` (${formatRelativeDate(mod.pendingContextMeta.updatedAt)})` : ""} — click sync to update`
-                                    : staleModuleIds?.has(mod.id)
-                                      ? "Source changed — click sync to update"
-                                      : mod.context
-                                        ? "Has context"
-                                        : "No context yet"}
+                                  : mod.pendingContextMeta?.source
+                                    ? `Source changed via ${mod.pendingContextMeta.source}${mod.pendingContextMeta.updatedAt ? ` (${formatRelativeDate(mod.pendingContextMeta.updatedAt)})` : ""} — click sync to update`
+                                    : mod.context
+                                      ? "Has context"
+                                      : "No context yet"}
                               </TooltipContent>
                             </Tooltip>
                             <span className="flex-1 truncate">{mod.name}</span>

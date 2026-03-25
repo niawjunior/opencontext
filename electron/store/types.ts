@@ -58,11 +58,6 @@ export interface AppSettings {
   mcpServer: {
     autoStart: boolean;
   };
-  fileWatcher: {
-    enabled: boolean;
-    debounceMs: number;
-    watchedProjects: string[];
-  };
 }
 
 export interface CoverageItem {
@@ -87,10 +82,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoRebuildContext: true,
   mcpServer: {
     autoStart: false,
-  },
-  fileWatcher: {
-    enabled: false,
-    debounceMs: 2000,
-    watchedProjects: [],
   },
 };

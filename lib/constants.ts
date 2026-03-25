@@ -23,11 +23,6 @@ export const IPC = {
   MCP_STATUS: "mcp:status",
   MCP_GET_CONFIG: "mcp:get-config",
 
-  // File Watcher
-  WATCHER_START: "watcher:start",
-  WATCHER_STOP: "watcher:stop",
-  WATCHER_STATUS: "watcher:status",
-
   // Settings
   SETTINGS_GET: "settings:get",
   SETTINGS_UPDATE: "settings:update",
@@ -43,7 +38,6 @@ export const IPC = {
 // Events (main → renderer)
 export const EVENTS = {
   CONTEXT_GENERATE_PROGRESS: "context:generate-progress",
-  WATCHER_FILE_CHANGED: "watcher:file-changed",
   UPDATE_AVAILABLE: "update:available",
   UPDATE_DOWNLOADED: "update:downloaded",
 } as const;

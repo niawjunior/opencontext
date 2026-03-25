@@ -43,7 +43,6 @@ export default function SettingsPage() {
   const { settings, update } = useSettings();
   const mcp = useMcpStatus();
   const [claudePath, setClaudePath] = useState("");
-  const [debounceMs, setDebounceMs] = useState("2000");
   const [copied, setCopied] = useState(false);
   const [appVersion, setAppVersion] = useState("");
   const [dataPath, setDataPath] = useState("");
@@ -56,7 +55,6 @@ export default function SettingsPage() {
   useEffect(() => {
     if (settings) {
       setClaudePath(settings.claudeCliPath);
-      setDebounceMs(String(settings.fileWatcher.debounceMs));
     }
   }, [settings]);
 
@@ -98,12 +96,8 @@ export default function SettingsPage() {
     if (!settings) return;
     autoSave({
       claudeCliPath: claudePath,
-      fileWatcher: {
-        ...settings.fileWatcher,
-        debounceMs: parseInt(debounceMs) || 2000,
-      },
     });
-  }, [claudePath, debounceMs, autoSave, settings]);
+  }, [claudePath, autoSave, settings]);
 
   const handleDetectCli = async () => {
     if (!api) return;
@@ -155,7 +149,6 @@ export default function SettingsPage() {
           <TabsList>
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="mcp">MCP Server</TabsTrigger>
-            <TabsTrigger value="watcher">File Watcher</TabsTrigger>
           </TabsList>
           {saved && (
             <span className="text-xs text-muted-foreground flex items-center gap-1 animate-in fade-in">
@@ -324,42 +317,6 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="watcher" className="space-y-4 mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>File Watcher</CardTitle>
-              <CardDescription>
-                Watch project directories for changes and get notified
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label>Enable file watching</Label>
-                <Switch
-                  checked={settings.fileWatcher.enabled}
-                  onCheckedChange={(checked) =>
-                    update({
-                      fileWatcher: { ...settings.fileWatcher, enabled: checked },
-                    })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="debounce">Debounce interval (ms)</Label>
-                <Input
-                  id="debounce"
-                  type="number"
-                  value={debounceMs}
-                  onChange={(e) => setDebounceMs(e.target.value)}
-                  className="w-32 h-8"
-                />
-                <p className="text-[10px] text-muted-foreground">
-                  Changes are saved automatically
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
     </PageContainer>
   );

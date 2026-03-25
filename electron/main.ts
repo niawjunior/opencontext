@@ -16,7 +16,6 @@ import { registerProjectHandlers } from "./ipc/projects";
 import { registerModuleHandlers } from "./ipc/modules";
 import { registerContextHandlers } from "./ipc/context";
 import { registerMcpServerHandlers } from "./ipc/mcp-server";
-import { registerFileWatcherHandlers } from "./ipc/file-watcher";
 import { registerSettingsHandlers } from "./ipc/settings";
 import { registerDialogHandlers } from "./ipc/dialog";
 
@@ -289,7 +288,6 @@ app.whenReady().then(() => {
   registerModuleHandlers(store);
   registerContextHandlers(store, getMainWindow);
   registerMcpServerHandlers(dataDir, store);
-  registerFileWatcherHandlers(store, getMainWindow);
   registerSettingsHandlers(store);
   registerDialogHandlers();
 

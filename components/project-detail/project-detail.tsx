@@ -81,9 +81,6 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
   const [showSyncDialog, setShowSyncDialog] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
-  // Staleness tracking
-  const [staleModuleIds, setStaleModuleIds] = useState<Set<string>>(new Set());
-
   // Unsaved changes tracking
   const [hasDirtyEditor, setHasDirtyEditor] = useState(false);
   const [pendingModule, setPendingModule] = useState<Module | null>(null);
@@ -135,25 +132,6 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     loadProject();
   }, [loadProject]);
 
-  // Listen for file changes to mark modules as stale
-  useEffect(() => {
-    if (!api || !project) return;
-    const cleanup = api.watcher.onFileChanged((data: unknown) => {
-      const event = data as { projectId: string; path: string };
-      if (event.projectId !== projectId) return;
-      // Check if the changed file falls under any module's path
-      const newStale = new Set(staleModuleIds);
-      for (const mod of project.modules) {
-        if (mod.context && mod.path && event.path.includes(mod.path)) {
-          newStale.add(mod.id);
-        }
-      }
-      if (newStale.size !== staleModuleIds.size) {
-        setStaleModuleIds(newStale);
-      }
-    });
-    return cleanup;
-  }, [api, project, projectId, staleModuleIds]);
 
   const handleSelectModule = (mod: Module) => {
     // If module has pending context, open review dialog
@@ -250,12 +228,6 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
         if (selectedModule?.id === mod.id) {
           setSelectedModule({ ...mod, context: result });
         }
-        // Clear staleness
-        setStaleModuleIds((prev) => {
-          const next = new Set(prev);
-          next.delete(mod.id);
-          return next;
-        });
         toast.success(`Context generated for ${mod.name}`);
       } else {
         // Has context — resync and show diff
@@ -291,12 +263,6 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     if (selectedModule?.id === syncingModule.id) {
       setSelectedModule({ ...syncingModule, context, pendingContext: undefined });
     }
-    // Clear staleness
-    setStaleModuleIds((prev) => {
-      const next = new Set(prev);
-      next.delete(syncingModule.id);
-      return next;
-    });
     setShowSyncDialog(false);
     setSyncResult(null);
     setSyncingModule(null);
@@ -536,7 +502,6 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
                 <ModuleTree
                   modules={project.modules}
                   selectedId={selectedModule?.id}
-                  staleModuleIds={staleModuleIds}
                   onSelect={handleSelectModule}
                   onEdit={(mod) => {
                     setEditingModule(mod);

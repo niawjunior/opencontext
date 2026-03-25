@@ -106,16 +106,6 @@ export interface ElectronAPI {
     setupGitHook: (projectPath: string) => Promise<{ hookPath: string }>;
   };
 
-  // File Watcher
-  watcher: {
-    start: (projectId: string) => Promise<{ status: string }>;
-    stop: (projectId: string) => Promise<{ status: string }>;
-    status: () => Promise<{ watchedProjects: string[] }>;
-    onFileChanged: (
-      callback: (data: FileChangeEvent) => void
-    ) => () => void;
-  };
-
   // Settings
   settings: {
     get: () => Promise<AppSettings>;
@@ -166,12 +156,6 @@ export interface McpConfigSnippet {
       env: Record<string, string>;
     };
   };
-}
-
-export interface FileChangeEvent {
-  projectId: string;
-  event: string;
-  path: string;
 }
 
 export interface ScannedModule {

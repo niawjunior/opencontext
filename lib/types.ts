@@ -56,11 +56,6 @@ export interface AppSettings {
   mcpServer: {
     autoStart: boolean;
   };
-  fileWatcher: {
-    enabled: boolean;
-    debounceMs: number;
-    watchedProjects: string[];
-  };
 }
 
 export interface CoverageItem {
