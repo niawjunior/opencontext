@@ -280,9 +280,8 @@ app.whenReady().then(() => {
   migrateOldDataDir(userDataPath);
   const dataDir = resolveDataDir(userDataPath);
   const store = new DataStore(dataDir);
+  store.watchForExternalChanges(); // Detect MCP server writes in real-time
   const getMainWindow = () => mainWindow;
-
-  // Forward store change events to renderer (debounced per project)
   const pendingNotifications = new Map<string, ReturnType<typeof setTimeout>>();
   store.on("project-changed", (projectId: string) => {
     const existing = pendingNotifications.get(projectId);

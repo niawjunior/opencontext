@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { EventEmitter } from "node:events";
@@ -24,6 +25,8 @@ export class DataStore extends EventEmitter {
   private settingsPath: string;
   private initialized = false;
   private writeLocks = new Map<string, Promise<void>>();
+  private recentOwnWrites = new Set<string>();
+  private watcher: fsSync.FSWatcher | null = null;
 
   constructor(private dataDir: string) {
     super();
@@ -31,6 +34,38 @@ export class DataStore extends EventEmitter {
     this.contextsDir = path.join(dataDir, "contexts");
     this.indexPath = path.join(dataDir, "projects-index.json");
     this.settingsPath = path.join(dataDir, "settings.json");
+  }
+
+  /**
+   * Watch the projects directory for external file changes (e.g. from the MCP server process).
+   * When a project JSON file is modified externally, emit "project-changed" so the UI updates.
+   */
+  watchForExternalChanges(): void {
+    if (this.watcher) return;
+    try {
+      fsSync.mkdirSync(this.projectsDir, { recursive: true });
+      this.watcher = fsSync.watch(this.projectsDir, (eventType, filename) => {
+        if (!filename || !filename.endsWith(".json")) return;
+        const projectId = filename.replace(".json", "");
+
+        // Skip if this was our own write
+        if (this.recentOwnWrites.has(projectId)) return;
+
+        // Debounce: fs.watch can fire multiple times for one write
+        this.recentOwnWrites.add(projectId);
+        setTimeout(() => {
+          this.recentOwnWrites.delete(projectId);
+          this.emit("project-changed", projectId);
+        }, 500);
+      });
+    } catch {
+      // Watcher is best-effort
+    }
+  }
+
+  stopWatching(): void {
+    this.watcher?.close();
+    this.watcher = null;
   }
 
   private async ensureInit(): Promise<void> {
@@ -323,7 +358,10 @@ export class DataStore extends EventEmitter {
 
   private async writeProjectFile(project: Project): Promise<void> {
     const filePath = path.join(this.projectsDir, `${project.id}.json`);
+    // Mark as own write so the file watcher ignores it
+    this.recentOwnWrites.add(project.id);
     await fs.writeFile(filePath, JSON.stringify(project, null, 2), "utf-8");
+    setTimeout(() => this.recentOwnWrites.delete(project.id), 1000);
   }
 
   /** Serialize async operations per project to prevent read-modify-write races */
