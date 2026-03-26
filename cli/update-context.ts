@@ -173,7 +173,13 @@ function hasMcpJson(projectPath: string): boolean {
   try {
     const content = fs.readFileSync(path.join(projectPath, ".mcp.json"), "utf-8");
     const config = JSON.parse(content);
-    return !!config?.mcpServers?.["open-context"];
+    for (const server of Object.values(config?.mcpServers || {})) {
+      const args = (server as { args?: string[] })?.args;
+      if (args?.some((a: string) => a.includes("open-context") || a.includes("context-explorer"))) {
+        return true;
+      }
+    }
+    return false;
   } catch {
     return false;
   }

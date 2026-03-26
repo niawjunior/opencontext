@@ -56,6 +56,7 @@ export interface ElectronAPI {
         context: string;
         lastAnalyzedAt: string;
         pendingContextMeta: { updatedAt: string; source?: string; previousPendingAt?: string } | undefined;
+        staleness: { status: "fresh" | "stale" | "outdated" | "unknown"; commitsBehind: number; lastCheckedAt: string };
       }>
     ) => Promise<Module>;
     delete: (projectId: string, moduleId: string) => Promise<void>;

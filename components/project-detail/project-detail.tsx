@@ -183,7 +183,7 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
       setSelectedModule(mod);
       return;
     }
-    // If module is stale and has existing context, auto-trigger sync
+    // Stale/outdated modules with existing context — trigger resync to show diff
     const isStale = mod.staleness?.status === "stale" || mod.staleness?.status === "outdated";
     if (isStale && mod.context?.trim()) {
       setSelectedModule(mod);
@@ -304,12 +304,18 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
         context,
         lastAnalyzedAt: new Date().toISOString(),
         pendingContextMeta: undefined,
+        staleness: { status: "fresh", commitsBehind: 0, lastCheckedAt: new Date().toISOString() },
       });
     }
 
     await loadProject();
     if (selectedModule?.id === syncingModule.id) {
-      setSelectedModule({ ...syncingModule, context, pendingContext: undefined });
+      setSelectedModule({
+        ...syncingModule,
+        context,
+        pendingContext: undefined,
+        staleness: { status: "fresh", commitsBehind: 0, lastCheckedAt: new Date().toISOString() },
+      });
     }
     setShowSyncDialog(false);
     setSyncResult(null);
@@ -489,14 +495,26 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
             </Badge>
           )}
           {(() => {
+            const pendingCount = project.modules.filter(
+              (m) => m.pendingContext
+            ).length;
             const staleCount = project.modules.filter(
               (m) => m.staleness?.status === "stale" || m.staleness?.status === "outdated"
             ).length;
-            return staleCount > 0 ? (
-              <Badge variant="destructive" className="text-[10px] px-1.5 py-0 gap-1">
-                {staleCount} module{staleCount !== 1 ? "s" : ""} need attention
-              </Badge>
-            ) : null;
+            return (
+              <>
+                {pendingCount > 0 && (
+                  <Badge variant="destructive" className="text-[10px] px-1.5 py-0 gap-1">
+                    {pendingCount} pending review{pendingCount !== 1 ? "s" : ""}
+                  </Badge>
+                )}
+                {staleCount > 0 && (
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 gap-1">
+                    {staleCount} stale
+                  </Badge>
+                )}
+              </>
+            );
           })()}
         </div>
       </div>

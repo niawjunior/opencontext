@@ -12,7 +12,7 @@
  * JSON payload: { projectPath, projectId, projectName, modules: [{id, name, type, path, currentContext}] }
  */
 
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -61,15 +61,35 @@ function hasMcpJson(projectPath: string): boolean {
   try {
     const content = fs.readFileSync(path.join(projectPath, ".mcp.json"), "utf-8");
     const config = JSON.parse(content);
-    return !!config?.mcpServers?.["open-context"];
+    // Check for any server pointing to our MCP
+    for (const server of Object.values(config?.mcpServers || {})) {
+      const args = (server as { args?: string[] })?.args;
+      if (args?.some((a: string) => a.includes("open-context") || a.includes("context-explorer"))) {
+        return true;
+      }
+    }
+    return false;
   } catch {
     return false;
   }
 }
 
+function getMcpServerName(projectPath: string): string {
+  try {
+    const content = fs.readFileSync(path.join(projectPath, ".mcp.json"), "utf-8");
+    const config = JSON.parse(content);
+    for (const [name, server] of Object.entries(config?.mcpServers || {})) {
+      const args = (server as { args?: string[] })?.args;
+      if (args?.some((a: string) => a.includes("open-context") || a.includes("context-explorer"))) {
+        return name;
+      }
+    }
+  } catch { /* ignore */ }
+  return "open-context";
+}
+
 function getGitDiff(projectPath: string, modulePath: string): string {
   try {
-    // Get diff for the module's path (directory or file)
     const paths = modulePath.split(",").map((p) => p.trim()).filter(Boolean);
     const diffArgs = ["diff", "HEAD~1", "HEAD", "--"];
     for (const p of paths) {
@@ -79,40 +99,71 @@ function getGitDiff(projectPath: string, modulePath: string): string {
       cwd: projectPath,
       encoding: "utf-8",
       timeout: 10_000,
-      maxBuffer: 1024 * 1024, // 1MB
+      maxBuffer: 1024 * 1024,
     });
-    return diff.slice(0, 50_000); // Cap at 50KB to avoid huge prompts
+    return diff.slice(0, 50_000); // Cap at 50KB
   } catch {
-    return "(no diff available)";
+    return "";
   }
 }
 
-function buildPrompt(mod: ModuleInfo, diff: string, projectId: string, projectName: string): string {
-  return `You are updating context documentation for a code module after recent changes.
+function buildPrompt(mod: ModuleInfo, diff: string, projectId: string, projectName: string, mcpServerName: string): string {
+  const toolName = `mcp__${mcpServerName}__update_module_context`;
+  return `You are a code context analyst. Your job is to decide whether a git diff warrants updating a module's context documentation, and if so, make a precise surgical update.
 
 Module: "${mod.name}" (${mod.type}) at path: ${mod.path}
 Project: "${projectName}" (ID: ${projectId})
 
-## Current context documentation:
-${mod.currentContext}
+## Step 1: Assess significance
 
-## Recent code changes (git diff):
+Look at the diff below and determine if it contains changes that affect the module's **behavior, API, architecture, data flow, or public interface**.
+
+Changes that are NOT significant (do NOT update):
+- Formatting, whitespace, or style-only changes
+- Internal variable renames that don't affect behavior
+- Comment-only changes
+- Import reordering without new dependencies
+- Typo fixes in strings or comments
+- Minor refactors that preserve the same behavior and API
+
+Changes that ARE significant (DO update):
+- New or removed functions, components, hooks, types, or exports
+- Changed function signatures, props, or return types
+- New features, behaviors, or user-facing functionality
+- Architectural changes (new patterns, changed data flow)
+- Changed dependencies that affect the module's capabilities
+- Bug fixes that change documented behavior
+
+If the changes are NOT significant, respond with exactly: "SKIP: <brief reason>"
+Do NOT call any tools if skipping.
+
+## Step 2: If significant, update the context
+
+Current context documentation:
+\`\`\`markdown
+${mod.currentContext}
+\`\`\`
+
+Git diff:
 \`\`\`diff
 ${diff}
 \`\`\`
 
-## Instructions:
-1. Analyze the git diff to understand what changed in this module.
-2. Update the module's context documentation to reflect these changes.
-3. Keep the same markdown structure and style as the current context.
-4. Only modify sections that are affected by the changes.
-5. If the diff is trivial (formatting, comments, whitespace), keep the context unchanged.
-6. Use the update_module_context MCP tool to submit the updated context:
-   - projectId: "${projectId}"
-   - moduleId: "${mod.id}"
-   - context: <your updated markdown>
+Rules for updating:
+1. Start with the EXACT current context as your base
+2. Make MINIMAL, TARGETED edits — only change sentences/bullets directly affected by the diff
+3. PRESERVE all headings, sections, tables, and formatting exactly as they are
+4. DO NOT rewrite, reorganize, or rephrase unaffected content
+5. DO NOT add new sections unless the diff introduces entirely new functionality
+6. DO NOT remove sections unless the diff removes the corresponding functionality
+7. Output must be the COMPLETE updated markdown
 
-IMPORTANT: You MUST call the update_module_context tool. Do not just output text.`;
+Call the ${toolName} tool with:
+- projectId: "${projectId}"
+- moduleId: "${mod.id}"
+- context: <the complete updated markdown>
+
+You MUST either respond with "SKIP: <reason>" or call the tool. No other output.`;
 }
 
 async function main(): Promise<void> {
@@ -134,7 +185,6 @@ async function main(): Promise<void> {
   log(logFile, `Starting smart context update for project: ${payload.projectName}`);
   log(logFile, `Modules to update: ${payload.modules.map((m) => m.name).join(", ")}`);
 
-  // Verify prerequisites
   const claudePath = findClaude();
   if (!claudePath) {
     log(logFile, "Claude CLI not found — aborting");
@@ -147,27 +197,26 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // Process each module sequentially
+  const mcpServerName = getMcpServerName(payload.projectPath);
+  log(logFile, `MCP server name: ${mcpServerName}`);
+
   for (const mod of payload.modules) {
     log(logFile, `\n--- Processing: ${mod.name} (${mod.type}) ---`);
 
     try {
       const diff = getGitDiff(payload.projectPath, mod.path);
-      if (diff === "(no diff available)" || diff.trim().length === 0) {
+      if (diff.trim().length === 0) {
         log(logFile, `No diff found for ${mod.name} — skipping`);
         continue;
       }
 
       log(logFile, `Diff size: ${diff.length} chars`);
 
-      const prompt = buildPrompt(mod, diff, payload.projectId, payload.projectName);
+      const prompt = buildPrompt(mod, diff, payload.projectId, payload.projectName, mcpServerName);
 
-      log(logFile, `Running Claude Code for ${mod.name}...`);
-
+      log(logFile, `Running Claude Code for ${mod.name} (assess + update)...`);
       const allowedTools = [
-        "mcp__open-context__update_module_context",
-        "mcp__open-context__resolve_project",
-        "mcp__open-context__get_module_context",
+        `mcp__${mcpServerName}__update_module_context`,
       ].join(",");
 
       const result = execFileSync(claudePath, [
@@ -182,12 +231,16 @@ async function main(): Promise<void> {
         env: { ...process.env },
       });
 
-      log(logFile, `Claude output for ${mod.name}: ${result.slice(0, 500)}`);
-      log(logFile, `Successfully processed: ${mod.name}`);
+      const output = result.trim();
+      if (output.startsWith("SKIP:")) {
+        log(logFile, `Claude decided to skip ${mod.name}: ${output}`);
+      } else {
+        log(logFile, `Claude output for ${mod.name}: ${output.slice(0, 500)}`);
+        log(logFile, `Successfully processed: ${mod.name}`);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       log(logFile, `ERROR processing ${mod.name}: ${msg}`);
-      // Continue with next module
     }
   }
 

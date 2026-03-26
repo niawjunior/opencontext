@@ -27,6 +27,7 @@ export function registerModuleHandlers(store: DataStore): void {
         context: string;
         lastAnalyzedAt: string;
         pendingContextMeta: { updatedAt: string; source?: string; previousPendingAt?: string } | undefined;
+        staleness: { status: "fresh" | "stale" | "outdated" | "unknown"; commitsBehind: number; lastCheckedAt: string };
       }>
     ) => {
       const result = await store.updateModule(projectId, moduleId, data);
