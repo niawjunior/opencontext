@@ -71,9 +71,9 @@ export function registerMcpServerHandlers(dataDir: string, store?: DataStore): v
 
   function getUpdateScriptPath(): string {
     if (app.isPackaged) {
-      return path.join(process.resourcesPath, "dist-mcp", "mcp-server", "update-context.js");
+      return path.join(process.resourcesPath, "dist-mcp", "cli", "update-context.js");
     }
-    return path.join(__dirname, "..", "dist-mcp", "mcp-server", "update-context.js");
+    return path.join(__dirname, "..", "dist-mcp", "cli", "update-context.js");
   }
 
   ipcMain.handle(

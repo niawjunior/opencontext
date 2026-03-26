@@ -724,7 +724,13 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
       {/* Setup Claude Code Dialog */}
       <SetupClaudeDialog
         open={showSetupDialog}
-        onOpenChange={setShowSetupDialog}
+        onOpenChange={(open) => {
+          setShowSetupDialog(open);
+          // Re-check setup status when dialog opens (e.g., hook may have been deleted)
+          if (open && project?.path) {
+            api?.mcp.checkProjectSetup(project.path).then(setClaudeSetupStatus);
+          }
+        }}
         projectId={projectId}
         projectPath={project.path}
         status={claudeSetupStatus}

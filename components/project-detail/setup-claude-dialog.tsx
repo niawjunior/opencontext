@@ -98,7 +98,8 @@ export function SetupClaudeDialog({
     },
   ];
 
-  const allDone = status.configured && status.hasClaudeMd;
+  const allDone = status.configured && status.hasClaudeMd && status.hasHuskyHook;
+  const nothingSelected = ![mcpJson, claudeMd, huskyHook].some(Boolean);
   const selectedCount = [mcpJson, claudeMd, huskyHook].filter(Boolean).length;
 
   return (
@@ -162,7 +163,7 @@ export function SetupClaudeDialog({
             You can also trigger context updates from any script or CI pipeline:
           </p>
           <code className="text-[10px] font-mono bg-background px-2 py-1 rounded block break-all">
-            node &lt;app-path&gt;/dist-mcp/mcp-server/update-context.js --regenerate-all
+            node &lt;app-path&gt;/dist-mcp/cli/update-context.js --regenerate-all
           </code>
         </div>
 
@@ -180,7 +181,7 @@ export function SetupClaudeDialog({
               size="sm"
               className="h-7 text-xs"
               onClick={handleSetup}
-              disabled={setting || selectedCount === 0}
+              disabled={setting || nothingSelected}
             >
               {setting ? (
                 <Loader2 className="h-3 w-3 mr-1 animate-spin" />

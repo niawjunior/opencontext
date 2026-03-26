@@ -17,6 +17,7 @@
   },
   "include": [
     "mcp-server/**/*.ts",
+    "cli/**/*.ts",
     "electron/store/**/*.ts"
   ],
   "exclude": ["node_modules"]
