@@ -212,8 +212,8 @@ OPEN_CONTEXT_DATA_DIR="${dataDir}" node "${updateScriptPath}" --regenerate-all
 ### What triggers context updates
 - **Manual**: Click "Sync" on any module in Open Context
 - **Claude Code**: Use \`update_module_context\` MCP tool after code changes
-- **Git hook**: Auto-rebuilds on push (if configured)
-- **CLI**: \`node "${updateScriptPath}" --changed-files <files>\`
+- **Git hook**: On push, uses Claude Code to analyze changes and submit updated contexts (background)
+- **CLI**: \`node "${updateScriptPath}" --smart --changed-files <files>\`
 `;
 }
 
@@ -231,11 +231,12 @@ async function setupHuskyHook(
   const hookContent = `#!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh" 2>/dev/null || true
 
-# Open Context: rebuild context on push
-# Detects changed files and rebuilds the full context document
+# Open Context: smart context update on push
+# Uses Claude Code to analyze changes and update module contexts in the background
 CHANGED_FILES=$(git diff --name-only @{push}.. 2>/dev/null || git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
 if [ -n "$CHANGED_FILES" ]; then
-  OPEN_CONTEXT_DATA_DIR="${dataDir}" node "${updateScriptPath}" --changed-files $CHANGED_FILES 2>&1 | grep "^\\[context-update\\]" || true
+  echo "[open-context] Detecting affected modules..."
+  OPEN_CONTEXT_DATA_DIR="${dataDir}" node "${updateScriptPath}" --smart --changed-files $CHANGED_FILES 2>&1 | grep "^\\[context-update\\]" || true
 fi
 `;
 

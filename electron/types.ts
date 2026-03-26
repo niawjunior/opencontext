@@ -14,6 +14,9 @@ export interface ElectronAPI {
   getDataPath: () => Promise<string>;
   platform: NodeJS.Platform;
 
+  // Store change notifications
+  onProjectChanged: (callback: (projectId: string) => void) => () => void;
+
   // Auto-update
   onUpdateAvailable: (callback: (info: unknown) => void) => () => void;
   onUpdateDownloaded: (callback: (info: unknown) => void) => () => void;

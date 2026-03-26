@@ -96,19 +96,21 @@ export function SyncContextDialog({
         </div>
 
         {/* Diff view or Edit view */}
-        <div className="flex-1 min-h-0 rounded-md border overflow-hidden">
+        <div className="flex-1 min-h-0 rounded-md border overflow-hidden flex flex-col">
           {editing ? (
-            <Textarea
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              className="h-full min-h-[400px] font-mono text-xs resize-none border-0 rounded-none"
-              placeholder="Edit the new context..."
-            />
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <Textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                className="h-full min-h-[400px] font-mono text-xs resize-none border-0 rounded-none"
+                placeholder="Edit the new context..."
+              />
+            </div>
           ) : (
             <DiffView
               oldContent={oldContext}
               newContent={newContext}
-              className="h-full"
+              className="h-full min-h-0"
             />
           )}
         </div>

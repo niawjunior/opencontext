@@ -23,6 +23,14 @@ const electronAPI = {
     ipcRenderer.send("update:install");
   },
 
+  // Store change notifications
+  onProjectChanged: (callback: (projectId: string) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, projectId: string) =>
+      callback(projectId);
+    ipcRenderer.on("store:project-changed", handler);
+    return () => ipcRenderer.removeListener("store:project-changed", handler);
+  },
+
   // Projects
   projects: {
     list: (): Promise<unknown> => ipcRenderer.invoke("projects:list"),

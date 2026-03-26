@@ -17,6 +17,8 @@
 
 import os from "node:os";
 import path from "node:path";
+import { execFileSync, spawn as nodeSpawn } from "node:child_process";
+import fs from "node:fs";
 import { DataStore } from "../electron/store/data-store.js";
 
 function getDataDir(): string {
@@ -40,10 +42,12 @@ function parseArgs(args: string[]): {
   projectPath: string;
   changedFiles: string[];
   regenerateAll: boolean;
+  smart: boolean;
 } {
   let projectPath = process.cwd();
   const changedFiles: string[] = [];
   let regenerateAll = false;
+  let smart = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -56,6 +60,8 @@ function parseArgs(args: string[]): {
       }
     } else if (arg === "--regenerate-all" || arg === "--all") {
       regenerateAll = true;
+    } else if (arg === "--smart") {
+      smart = true;
     } else if (arg === "--help" || arg === "-h") {
       console.log(`
 Open Context — Update Context CLI
@@ -67,16 +73,17 @@ Options:
   --project-path <path>     Project directory (default: cwd)
   --changed-files <files>   Space-separated list of changed files
   --regenerate-all          Regenerate full context from all modules
+  --smart                   Use Claude Code to analyze changes and update contexts (background)
   --help                    Show this help message
 
 Examples:
   # Auto-detect project and regenerate full context
   context-update --regenerate-all
 
-  # Update context for specific changed files
-  context-update --changed-files src/components/Button.tsx src/hooks/useAuth.ts
+  # Smart mode: use Claude Code to analyze and update (non-blocking)
+  context-update --smart --changed-files src/components/Button.tsx
 
-  # Use in a git pre-push hook
+  # Legacy mode: just mark modules as stale
   context-update --changed-files $(git diff --name-only @{push})
 
 Environment:
@@ -86,7 +93,7 @@ Environment:
     }
   }
 
-  return { projectPath, changedFiles, regenerateAll };
+  return { projectPath, changedFiles, regenerateAll, smart };
 }
 
 async function findProject(store: DataStore, projectPath: string) {
@@ -154,8 +161,60 @@ function buildFullContext(project: {
   return sections.join("\n\n");
 }
 
+function findClaudeCli(): string | null {
+  try {
+    return execFileSync("which", ["claude"], { encoding: "utf-8", timeout: 5000 }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function hasMcpJson(projectPath: string): boolean {
+  try {
+    const content = fs.readFileSync(path.join(projectPath, ".mcp.json"), "utf-8");
+    const config = JSON.parse(content);
+    return !!config?.mcpServers?.["open-context"];
+  } catch {
+    return false;
+  }
+}
+
+function spawnSmartUpdate(
+  projectPath: string,
+  projectId: string,
+  projectName: string,
+  modules: Array<{ id: string; name: string; type: string; path: string; context: string }>
+): void {
+  // Find the smart-context-update script (sibling to this file)
+  const scriptPath = path.join(path.dirname(process.argv[1]), "smart-context-update.js");
+
+  const payload = JSON.stringify({
+    projectPath,
+    projectId,
+    projectName,
+    modules: modules.map((m) => ({
+      id: m.id,
+      name: m.name,
+      type: m.type,
+      path: m.path,
+      currentContext: m.context,
+    })),
+  });
+
+  // Spawn detached — this script exits, background process continues
+  const child = nodeSpawn("node", [scriptPath, payload], {
+    cwd: projectPath,
+    detached: true,
+    stdio: "ignore",
+    env: { ...process.env },
+  });
+  child.unref();
+
+  console.error(`[context-update] Smart update spawned in background (PID: ${child.pid})`);
+}
+
 async function main() {
-  const { projectPath, changedFiles, regenerateAll } = parseArgs(process.argv.slice(2));
+  const { projectPath, changedFiles, regenerateAll, smart } = parseArgs(process.argv.slice(2));
   const dataDir = getDataDir();
   const store = new DataStore(dataDir);
 
@@ -197,8 +256,29 @@ async function main() {
 
     console.error(`[context-update] Affected modules: ${affectedModules.map((m) => m.name).join(", ")}`);
 
-    // Mark affected modules as needing re-sync by setting pendingContextMeta
-    // The app shows an amber dot for modules with pendingContextMeta.source = "git-hook"
+    // Smart mode: use Claude Code to analyze and update (background)
+    if (smart) {
+      const modulesWithContext = affectedModules.filter((m) => m.context?.trim());
+      if (modulesWithContext.length === 0) {
+        console.error("[context-update] No affected modules have existing context — skipping smart update");
+      } else if (!findClaudeCli()) {
+        console.error("[context-update] Claude CLI not found — falling back to stale marking");
+      } else if (!hasMcpJson(projectPath)) {
+        console.error("[context-update] .mcp.json not found — falling back to stale marking");
+      } else {
+        console.error(`[context-update] Smart mode: spawning Claude Code for ${modulesWithContext.length} module(s)`);
+        spawnSmartUpdate(projectPath, project.id, project.name, modulesWithContext);
+        // Also rebuild full context with current data
+        const content = buildFullContext(project);
+        await store.saveFullContext(project.id, content);
+        console.error(`[context-update] Full context rebuilt (${content.length} chars)`);
+        process.exit(0);
+      }
+      // If we reach here, smart mode failed — fall through to legacy behavior
+      console.error("[context-update] Falling back to legacy stale-marking mode");
+    }
+
+    // Legacy mode: mark modules as stale
     const staleModules = affectedModules.filter((m) => m.context?.trim());
     if (staleModules.length > 0) {
       console.error(`[context-update] Marking ${staleModules.length} modules as stale:`);

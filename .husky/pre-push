@@ -1,10 +1,9 @@
 #!/usr/bin/env sh
 
-# Open Context: rebuild context on push
-# Detects changed files and rebuilds the full context document
+# Open Context: smart context update on push
+# Uses Claude Code to analyze changes and update module contexts in the background
 CHANGED_FILES=$(git diff --name-only @{push}.. 2>/dev/null || git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
 if [ -n "$CHANGED_FILES" ]; then
-  echo "[open-context] Rebuilding context for changed files..."
-  OPEN_CONTEXT_DATA_DIR="/Users/niawjunior/Library/Application Support/open-context/data" node "/Users/niawjunior/Desktop/lightwork/context-explorer/dist-mcp/mcp-server/update-context.js" --changed-files $CHANGED_FILES 2>&1 | grep "^\[context-update\]" || true
-  echo "[open-context] Done."
+  echo "[open-context] Detecting affected modules..."
+  OPEN_CONTEXT_DATA_DIR="/Users/niawjunior/Library/Application Support/open-context/data" node "/Users/niawjunior/Desktop/lightwork/context-explorer/dist-mcp/mcp-server/update-context.js" --smart --changed-files $CHANGED_FILES 2>&1 | grep "^\[context-update\]" || true
 fi

@@ -26,6 +26,14 @@ export function useProjects() {
     refresh();
   }, [refresh]);
 
+  // Auto-refresh when any project changes
+  useEffect(() => {
+    if (!api) return;
+    return api.onProjectChanged(() => {
+      refresh();
+    });
+  }, [api, refresh]);
+
   const getProject = useCallback(
     async (id: string): Promise<Project | null> => {
       if (!api) return null;

@@ -282,6 +282,20 @@ app.whenReady().then(() => {
   const store = new DataStore(dataDir);
   const getMainWindow = () => mainWindow;
 
+  // Forward store change events to renderer (debounced per project)
+  const pendingNotifications = new Map<string, ReturnType<typeof setTimeout>>();
+  store.on("project-changed", (projectId: string) => {
+    const existing = pendingNotifications.get(projectId);
+    if (existing) clearTimeout(existing);
+    pendingNotifications.set(
+      projectId,
+      setTimeout(() => {
+        pendingNotifications.delete(projectId);
+        mainWindow?.webContents.send("store:project-changed", projectId);
+      }, 300)
+    );
+  });
+
   // Register all IPC handlers
   setContentSecurityPolicy();
   registerCoreHandlers(dataDir);

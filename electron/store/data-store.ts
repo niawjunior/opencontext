@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import { EventEmitter } from "node:events";
 import type {
   Project,
   Module,
@@ -12,7 +13,11 @@ import type {
 } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
 
-export class DataStore {
+export interface StoreEvents {
+  "project-changed": [projectId: string];
+}
+
+export class DataStore extends EventEmitter {
   private projectsDir: string;
   private contextsDir: string;
   private indexPath: string;
@@ -21,6 +26,7 @@ export class DataStore {
   private writeLocks = new Map<string, Promise<void>>();
 
   constructor(private dataDir: string) {
+    super();
     this.projectsDir = path.join(dataDir, "projects");
     this.contextsDir = path.join(dataDir, "contexts");
     this.indexPath = path.join(dataDir, "projects-index.json");
@@ -78,6 +84,7 @@ export class DataStore {
     index.lastModified = now;
     await this.writeIndex(index);
 
+    this.emit("project-changed", project.id);
     return project;
   }
 
@@ -102,6 +109,7 @@ export class DataStore {
       await this.writeIndex(index);
     }
 
+    this.emit("project-changed", id);
     return project;
   }
 
@@ -117,6 +125,7 @@ export class DataStore {
     index.projects = index.projects.filter((p) => p.id !== id);
     index.lastModified = new Date().toISOString();
     await this.writeIndex(index);
+    this.emit("project-changed", id);
   }
 
   // ─── Module CRUD ───────────────────────────────────────────────
@@ -145,6 +154,7 @@ export class DataStore {
       await this.writeProjectFile(project);
       await this.updateIndexTimestamp(projectId, now);
 
+      this.emit("project-changed", projectId);
       return mod;
     });
   }
@@ -167,6 +177,7 @@ export class DataStore {
       await this.writeProjectFile(project);
       await this.updateIndexTimestamp(projectId, now);
 
+      this.emit("project-changed", projectId);
       return mod;
     });
   }
@@ -180,6 +191,8 @@ export class DataStore {
       project.lastUpdated = new Date().toISOString();
       await this.writeProjectFile(project);
       await this.updateIndexTimestamp(projectId, project.lastUpdated);
+
+      this.emit("project-changed", projectId);
     });
   }
 
@@ -208,6 +221,7 @@ export class DataStore {
     };
     const filePath = path.join(this.contextsDir, `${projectId}.context.json`);
     await fs.writeFile(filePath, JSON.stringify(doc, null, 2), "utf-8");
+    this.emit("project-changed", projectId);
     return doc;
   }
 

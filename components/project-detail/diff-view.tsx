@@ -3,7 +3,6 @@
 import { useState, useMemo } from "react";
 import { Columns2, AlignJustify, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Tooltip,
   TooltipContent,
@@ -111,7 +110,7 @@ export function DiffView({ oldContent, newContent, className }: DiffViewProps) {
       </div>
 
       {/* Content */}
-      <ScrollArea className="flex-1">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {viewMode === "unified" ? (
           <UnifiedView diff={unifiedDiff} />
         ) : (
@@ -122,7 +121,7 @@ export function DiffView({ oldContent, newContent, className }: DiffViewProps) {
             onToggleHunk={toggleHunk}
           />
         )}
-      </ScrollArea>
+      </div>
     </div>
   );
 }

@@ -147,6 +147,32 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     loadProject();
   }, [loadProject]);
 
+  // Auto-refresh when store data changes (e.g., MCP update, git staleness)
+  useEffect(() => {
+    if (!api) return;
+    const unsubscribe = api.onProjectChanged((changedProjectId: string) => {
+      if (changedProjectId === projectId) {
+        // Reload project data
+        api.projects.get(projectId).then((updated) => {
+          if (updated) {
+            setProject(updated as Project);
+            // If a module is selected, refresh it with latest data
+            if (selectedModule) {
+              const refreshed = (updated as Project).modules.find(
+                (m) => m.id === selectedModule.id
+              );
+              if (refreshed) setSelectedModule(refreshed);
+            }
+          }
+        });
+        // Also refresh context doc
+        api.context.getFull(projectId).then((doc) => {
+          if (doc) setContextDoc(doc as ContextDocument);
+        });
+      }
+    });
+    return unsubscribe;
+  }, [api, projectId, selectedModule?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSelectModule = (mod: Module) => {
     // If module has pending context, open review dialog

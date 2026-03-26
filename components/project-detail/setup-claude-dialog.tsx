@@ -91,7 +91,7 @@ export function SetupClaudeDialog({
       icon: GitBranch,
       label: "Git pre-push hook",
       description:
-        "Auto-rebuild context on git push — detects changed files and updates the full context document",
+        "Smart context update on push — uses Claude Code to analyze changes and update module contexts automatically",
       checked: huskyHook,
       onChange: setHuskyHook,
       done: status.hasHuskyHook,
