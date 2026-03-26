@@ -1,6 +1,8 @@
 import { ipcMain } from "electron";
 import type { DataStore } from "../store/data-store";
 import type { ModuleType } from "../store/types";
+import { GitService } from "../git/git-service";
+import { resolveSourceFiles } from "../git/resolve-source-files";
 
 export function registerModuleHandlers(store: DataStore): void {
   ipcMain.handle(
@@ -99,11 +101,31 @@ export function registerModuleHandlers(store: DataStore): void {
       if (!mod) throw new Error(`Module ${moduleId} not found`);
       if (!mod.pendingContext) throw new Error("No pending context to approve");
 
+      // Snapshot git state for staleness tracking
+      let sourceFiles: string[] | undefined;
+      let gitSnapshot: { commitSha: string; commitDate: string } | undefined;
+      try {
+        if (project.path && (await GitService.isGitRepo(project.path))) {
+          sourceFiles = await resolveSourceFiles(project.path, mod.path);
+          const commitSha = await GitService.getHeadSha(project.path);
+          gitSnapshot = { commitSha, commitDate: new Date().toISOString() };
+        }
+      } catch {
+        // Git snapshot is best-effort
+      }
+
       return store.updateModule(projectId, moduleId, {
         context: mod.pendingContext,
         pendingContext: "",
         pendingContextMeta: undefined,
         lastAnalyzedAt: new Date().toISOString(),
+        sourceFiles,
+        gitSnapshot,
+        staleness: {
+          status: "fresh",
+          commitsBehind: 0,
+          lastCheckedAt: new Date().toISOString(),
+        },
       });
     }
   );

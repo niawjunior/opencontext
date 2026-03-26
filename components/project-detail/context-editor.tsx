@@ -85,6 +85,16 @@ export function ContextEditor({
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
                 {module.type}
               </Badge>
+              {module.staleness?.status && module.staleness.status !== "unknown" && (
+                <Badge
+                  variant={module.staleness.status === "fresh" ? "secondary" : "destructive"}
+                  className="text-[10px] px-1.5 py-0 shrink-0"
+                >
+                  {module.staleness.status === "fresh"
+                    ? "Fresh"
+                    : `${module.staleness.commitsBehind} commit${module.staleness.commitsBehind !== 1 ? "s" : ""} behind`}
+                </Badge>
+              )}
               {dirty && (
                 <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
               )}

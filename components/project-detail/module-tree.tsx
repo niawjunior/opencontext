@@ -93,6 +93,33 @@ export function ModuleTree({
     );
   }, [modules, search]);
 
+  const getDotColor = (mod: Module) => {
+    // Actual pending context from MCP — needs review
+    if (mod.pendingContext) return "bg-amber-500 ring-2 ring-amber-500/30";
+    if (!mod.context) return "bg-muted-foreground/30";
+    // Git-based staleness colors
+    switch (mod.staleness?.status) {
+      case "fresh": return "bg-emerald-500";
+      case "stale": return "bg-yellow-500";
+      case "outdated": return "bg-red-500";
+      default: return "bg-emerald-500";
+    }
+  };
+
+  const getDotTooltip = (mod: Module) => {
+    if (mod.pendingContext) {
+      const meta = mod.pendingContextMeta;
+      return `Pending review${meta?.updatedAt ? ` (${formatRelativeDate(meta.updatedAt)} via ${meta.source || "unknown"})` : ""} — click to review`;
+    }
+    if (!mod.context) return "No context yet";
+    const s = mod.staleness;
+    if (!s || s.status === "unknown") return "Has context";
+    if (s.status === "fresh") return "Fresh — up to date";
+    const authors = s.authors?.length ? ` by ${s.authors.join(", ")}` : "";
+    const files = s.changedFiles?.length ? ` (${s.changedFiles.length} file${s.changedFiles.length !== 1 ? "s" : ""} changed${authors})` : "";
+    return `${s.status === "stale" ? "Stale" : "Outdated"} — ${s.commitsBehind} commit${s.commitsBehind !== 1 ? "s" : ""} behind${files} — click sync to update`;
+  };
+
   const grouped = useMemo(() => {
     const map = new Map<ModuleType, Module[]>();
     for (const mod of filtered) {
@@ -193,25 +220,11 @@ export function ModuleTree({
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span
-                                  className={`h-1.5 w-1.5 rounded-full shrink-0 ${
-                                    mod.pendingContext
-                                      ? "bg-amber-500 ring-2 ring-amber-500/30"
-                                      : mod.pendingContextMeta?.source
-                                        ? "bg-amber-500"
-                                        : mod.context
-                                          ? "bg-emerald-500"
-                                          : "bg-muted-foreground/30"
-                                  }`}
+                                  className={`h-1.5 w-1.5 rounded-full shrink-0 ${getDotColor(mod)}`}
                                 />
                               </TooltipTrigger>
                               <TooltipContent side="left">
-                                {mod.pendingContext
-                                  ? `Pending review${mod.pendingContextMeta?.updatedAt ? ` (${formatRelativeDate(mod.pendingContextMeta.updatedAt)} via ${mod.pendingContextMeta.source || "unknown"})` : ""} — click to review`
-                                  : mod.pendingContextMeta?.source
-                                    ? `Source changed via ${mod.pendingContextMeta.source}${mod.pendingContextMeta.updatedAt ? ` (${formatRelativeDate(mod.pendingContextMeta.updatedAt)})` : ""} — click sync to update`
-                                    : mod.context
-                                      ? "Has context"
-                                      : "No context yet"}
+                                {getDotTooltip(mod)}
                               </TooltipContent>
                             </Tooltip>
                             <span className="flex-1 truncate">{mod.name}</span>

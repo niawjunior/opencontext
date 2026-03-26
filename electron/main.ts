@@ -18,6 +18,7 @@ import { registerContextHandlers } from "./ipc/context";
 import { registerMcpServerHandlers } from "./ipc/mcp-server";
 import { registerSettingsHandlers } from "./ipc/settings";
 import { registerDialogHandlers } from "./ipc/dialog";
+import { registerGitHandlers } from "./ipc/git";
 
 // Configure logging
 log.transports.file.level = "info";
@@ -290,6 +291,7 @@ app.whenReady().then(() => {
   registerMcpServerHandlers(dataDir, store);
   registerSettingsHandlers(store);
   registerDialogHandlers();
+  registerGitHandlers(store);
 
   createMenu();
   createWindow();

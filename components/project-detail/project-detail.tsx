@@ -46,6 +46,8 @@ import { BatchAnalyzeDialog } from "./batch-analyze-dialog";
 import { SyncContextDialog } from "./sync-context-dialog";
 import { CoverageView } from "./coverage-view";
 import { SetupClaudeDialog } from "./setup-claude-dialog";
+import { GitHistoryPanel } from "./git-history-panel";
+import { SourceFilesPanel } from "./source-files-panel";
 import { toast } from "sonner";
 import { useElectron } from "@/hooks/use-electron";
 import { formatRelativeDate } from "@/lib/format";
@@ -84,6 +86,9 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
   // Unsaved changes tracking
   const [hasDirtyEditor, setHasDirtyEditor] = useState(false);
   const [pendingModule, setPendingModule] = useState<Module | null>(null);
+
+  // Bottom panel tab
+  const [bottomTab, setBottomTab] = useState<"files" | "history">("files");
 
   // Resizable split pane
   const [sidebarWidth, setSidebarWidth] = useState(280);
@@ -125,6 +130,16 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
     if (p?.path) {
       const status = await api.mcp.checkProjectSetup(p.path);
       setClaudeSetupStatus(status);
+    }
+
+    // Check git staleness in background (non-blocking)
+    if (p) {
+      api.git.checkProjectStaleness(projectId).then(() => {
+        // Reload to pick up updated staleness data
+        api.projects.get(projectId).then((updated) => {
+          if (updated) setProject(updated as Project);
+        });
+      }).catch(() => {});
     }
   }, [api, projectId]);
 
@@ -440,6 +455,16 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
               {formatRelativeDate(project.lastUpdated)}
             </Badge>
           )}
+          {(() => {
+            const staleCount = project.modules.filter(
+              (m) => m.staleness?.status === "stale" || m.staleness?.status === "outdated"
+            ).length;
+            return staleCount > 0 ? (
+              <Badge variant="destructive" className="text-[10px] px-1.5 py-0 gap-1">
+                {staleCount} module{staleCount !== 1 ? "s" : ""} need attention
+              </Badge>
+            ) : null;
+          })()}
         </div>
       </div>
 
@@ -521,16 +546,44 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
                 <GripVertical className="h-4 w-4 text-muted-foreground/40" />
               </div>
 
-              {/* Right: Editor */}
-              <div className="flex-1 min-w-0 overflow-hidden">
+              {/* Right: Editor + Info Panels */}
+              <div className="flex-1 min-w-0 overflow-hidden flex flex-col">
                 {selectedModule ? (
-                  <ContextEditor
-                    module={selectedModule}
-                    onSave={handleSaveContext}
-                    onDirtyChange={setHasDirtyEditor}
-                    onSync={handleSyncModule}
-                    syncing={syncing && syncingModule?.id === selectedModule.id}
-                  />
+                  <>
+                    <div className="flex-1 min-h-0">
+                      <ContextEditor
+                        module={selectedModule}
+                        onSave={handleSaveContext}
+                        onDirtyChange={setHasDirtyEditor}
+                        onSync={handleSyncModule}
+                        syncing={syncing && syncingModule?.id === selectedModule.id}
+                      />
+                    </div>
+                    {/* Bottom panel: Source Files / History */}
+                    <div className="border-t shrink-0 max-h-[40%] overflow-hidden flex flex-col">
+                      <div className="flex items-center gap-1 px-2 py-1 border-b bg-muted/30">
+                        <button
+                          className={`text-[10px] px-2 py-0.5 rounded ${bottomTab === "files" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                          onClick={() => setBottomTab("files")}
+                        >
+                          Source Files
+                        </button>
+                        <button
+                          className={`text-[10px] px-2 py-0.5 rounded ${bottomTab === "history" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                          onClick={() => setBottomTab("history")}
+                        >
+                          History
+                        </button>
+                      </div>
+                      <div className="flex-1 min-h-0 overflow-y-auto">
+                        {bottomTab === "files" ? (
+                          <SourceFilesPanel module={selectedModule} />
+                        ) : (
+                          <GitHistoryPanel projectId={projectId} module={selectedModule} />
+                        )}
+                      </div>
+                    </div>
+                  </>
                 ) : (
                   <Empty className="h-full border-0">
                     <EmptyHeader>

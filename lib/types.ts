@@ -25,6 +25,18 @@ export interface Module {
   };
   lastUpdated: string;
   lastAnalyzedAt?: string;
+  sourceFiles?: string[];
+  gitSnapshot?: {
+    commitSha: string;
+    commitDate: string;
+  };
+  staleness?: {
+    status: "fresh" | "stale" | "outdated" | "unknown";
+    commitsBehind: number;
+    lastCheckedAt: string;
+    changedFiles?: string[];
+    authors?: string[];
+  };
 }
 
 export type ModuleType =

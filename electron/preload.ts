@@ -105,6 +105,20 @@ const electronAPI = {
       ipcRenderer.invoke("mcp:setup-git-hook", projectPath),
   },
 
+  // Git
+  git: {
+    checkProjectStaleness: (projectId: string): Promise<unknown> =>
+      ipcRenderer.invoke("git:check-project-staleness", projectId),
+    checkModuleStaleness: (projectId: string, moduleId: string): Promise<unknown> =>
+      ipcRenderer.invoke("git:check-module-staleness", projectId, moduleId),
+    moduleHistory: (projectId: string, moduleId: string, opts?: { maxCount?: number }): Promise<unknown> =>
+      ipcRenderer.invoke("git:module-history", projectId, moduleId, opts),
+    resolveSourceFiles: (projectPath: string, modulePath: string): Promise<unknown> =>
+      ipcRenderer.invoke("git:resolve-source-files", projectPath, modulePath),
+    isRepo: (projectPath: string): Promise<unknown> =>
+      ipcRenderer.invoke("git:is-repo", projectPath),
+  },
+
   // Settings
   settings: {
     get: (): Promise<unknown> => ipcRenderer.invoke("settings:get"),

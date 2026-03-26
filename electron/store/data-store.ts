@@ -18,6 +18,7 @@ export class DataStore {
   private indexPath: string;
   private settingsPath: string;
   private initialized = false;
+  private writeLocks = new Map<string, Promise<void>>();
 
   constructor(private dataDir: string) {
     this.projectsDir = path.join(dataDir, "projects");
@@ -124,56 +125,62 @@ export class DataStore {
     projectId: string,
     data: Pick<Module, "name" | "type" | "path" | "context">
   ): Promise<Module> {
-    const project = await this.readProjectFile(projectId);
-    if (!project) throw new Error(`Project ${projectId} not found`);
+    return this.withProjectLock(projectId, async () => {
+      const project = await this.readProjectFile(projectId);
+      if (!project) throw new Error(`Project ${projectId} not found`);
 
-    const now = new Date().toISOString();
-    const mod: Module = {
-      id: crypto.randomUUID(),
-      projectId,
-      name: data.name,
-      type: data.type,
-      path: data.path,
-      context: data.context,
-      lastUpdated: now,
-    };
+      const now = new Date().toISOString();
+      const mod: Module = {
+        id: crypto.randomUUID(),
+        projectId,
+        name: data.name,
+        type: data.type,
+        path: data.path,
+        context: data.context,
+        lastUpdated: now,
+      };
 
-    project.modules.push(mod);
-    project.lastUpdated = now;
-    await this.writeProjectFile(project);
-    await this.updateIndexTimestamp(projectId, now);
+      project.modules.push(mod);
+      project.lastUpdated = now;
+      await this.writeProjectFile(project);
+      await this.updateIndexTimestamp(projectId, now);
 
-    return mod;
+      return mod;
+    });
   }
 
   async updateModule(
     projectId: string,
     moduleId: string,
-    data: Partial<Pick<Module, "name" | "type" | "path" | "context" | "pendingContext" | "pendingContextMeta" | "lastAnalyzedAt">>
+    data: Partial<Pick<Module, "name" | "type" | "path" | "context" | "pendingContext" | "pendingContextMeta" | "lastAnalyzedAt" | "sourceFiles" | "gitSnapshot" | "staleness">>
   ): Promise<Module> {
-    const project = await this.readProjectFile(projectId);
-    if (!project) throw new Error(`Project ${projectId} not found`);
+    return this.withProjectLock(projectId, async () => {
+      const project = await this.readProjectFile(projectId);
+      if (!project) throw new Error(`Project ${projectId} not found`);
 
-    const mod = project.modules.find((m) => m.id === moduleId);
-    if (!mod) throw new Error(`Module ${moduleId} not found`);
+      const mod = project.modules.find((m) => m.id === moduleId);
+      if (!mod) throw new Error(`Module ${moduleId} not found`);
 
-    const now = new Date().toISOString();
-    Object.assign(mod, data, { lastUpdated: now });
-    project.lastUpdated = now;
-    await this.writeProjectFile(project);
-    await this.updateIndexTimestamp(projectId, now);
+      const now = new Date().toISOString();
+      Object.assign(mod, data, { lastUpdated: now });
+      project.lastUpdated = now;
+      await this.writeProjectFile(project);
+      await this.updateIndexTimestamp(projectId, now);
 
-    return mod;
+      return mod;
+    });
   }
 
   async deleteModule(projectId: string, moduleId: string): Promise<void> {
-    const project = await this.readProjectFile(projectId);
-    if (!project) throw new Error(`Project ${projectId} not found`);
+    return this.withProjectLock(projectId, async () => {
+      const project = await this.readProjectFile(projectId);
+      if (!project) throw new Error(`Project ${projectId} not found`);
 
-    project.modules = project.modules.filter((m) => m.id !== moduleId);
-    project.lastUpdated = new Date().toISOString();
-    await this.writeProjectFile(project);
-    await this.updateIndexTimestamp(projectId, project.lastUpdated);
+      project.modules = project.modules.filter((m) => m.id !== moduleId);
+      project.lastUpdated = new Date().toISOString();
+      await this.writeProjectFile(project);
+      await this.updateIndexTimestamp(projectId, project.lastUpdated);
+    });
   }
 
   // ─── Context ───────────────────────────────────────────────────
@@ -303,6 +310,14 @@ export class DataStore {
   private async writeProjectFile(project: Project): Promise<void> {
     const filePath = path.join(this.projectsDir, `${project.id}.json`);
     await fs.writeFile(filePath, JSON.stringify(project, null, 2), "utf-8");
+  }
+
+  /** Serialize async operations per project to prevent read-modify-write races */
+  private withProjectLock<T>(projectId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.writeLocks.get(projectId) ?? Promise.resolve();
+    const next = prev.then(fn, fn); // run even if previous failed
+    this.writeLocks.set(projectId, next.then(() => {}, () => {}));
+    return next;
   }
 
   private async readIndex(): Promise<ProjectIndex> {

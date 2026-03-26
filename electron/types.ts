@@ -106,6 +106,38 @@ export interface ElectronAPI {
     setupGitHook: (projectPath: string) => Promise<{ hookPath: string }>;
   };
 
+  // Git
+  git: {
+    checkProjectStaleness: (projectId: string) => Promise<{
+      isGitRepo: boolean;
+      results: Record<string, {
+        status: "fresh" | "stale" | "outdated" | "unknown";
+        commitsBehind: number;
+        lastCheckedAt: string;
+        changedFiles?: string[];
+        authors?: string[];
+      }>;
+    }>;
+    checkModuleStaleness: (projectId: string, moduleId: string) => Promise<{
+      status: "fresh" | "stale" | "outdated" | "unknown";
+      commitsBehind: number;
+      lastCheckedAt: string;
+      changedFiles?: string[];
+      authors?: string[];
+    }>;
+    moduleHistory: (projectId: string, moduleId: string, opts?: { maxCount?: number }) => Promise<Array<{
+      sha: string;
+      shortSha: string;
+      author: string;
+      authorEmail: string;
+      date: string;
+      message: string;
+      filesChanged: string[];
+    }>>;
+    resolveSourceFiles: (projectPath: string, modulePath: string) => Promise<string[]>;
+    isRepo: (projectPath: string) => Promise<boolean>;
+  };
+
   // Settings
   settings: {
     get: () => Promise<AppSettings>;
