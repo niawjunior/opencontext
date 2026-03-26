@@ -183,6 +183,13 @@ export function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
       setSelectedModule(mod);
       return;
     }
+    // If module is stale and has existing context, auto-trigger sync
+    const isStale = mod.staleness?.status === "stale" || mod.staleness?.status === "outdated";
+    if (isStale && mod.context?.trim()) {
+      setSelectedModule(mod);
+      handleSyncModule(mod);
+      return;
+    }
     if (hasDirtyEditor && selectedModule?.id !== mod.id) {
       setPendingModule(mod);
     } else {
