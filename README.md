@@ -192,4 +192,4 @@ cd remote-server && npx tsc --noEmit
 
 ## License
 
-Copyright (c) 2026 Lightwork. All rights reserved.
+MIT — see [LICENSE](LICENSE) for details.
