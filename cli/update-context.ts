@@ -451,6 +451,12 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error("[context-update] Error:", err.message || err);
+  const msg = err.message || err;
+  if (msg.includes("credentials not found")) {
+    console.error("[context-update] Skipped: Open Context not configured on this machine.");
+    console.error("[context-update] Install the Open Context desktop app or set SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and OPEN_CONTEXT_ORG_ID env vars.");
+    process.exit(0); // Don't fail the push
+  }
+  console.error("[context-update] Error:", msg);
   process.exit(1);
 });
