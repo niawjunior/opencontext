@@ -5,6 +5,9 @@
   "functions": {
     "api/mcp.ts": {
       "maxDuration": 60
+    },
+    "api/context.ts": {
+      "maxDuration": 30
     }
   }
 }
