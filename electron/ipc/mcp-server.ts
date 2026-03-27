@@ -178,10 +178,7 @@ async function setupHuskyHook(
   await fs.mkdir(huskyDir, { recursive: true });
 
   const hookPath = path.join(huskyDir, "pre-push");
-  const hookContent = `#!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh" 2>/dev/null || true
-
-# Open Context: smart context update on push
+  const hookContent = `# Open Context: smart context update on push
 # Uses Claude Code to analyze changes and update module contexts in the background
 CHANGED_FILES=$(git diff --name-only @{push}.. 2>/dev/null || git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
 if [ -n "$CHANGED_FILES" ]; then
