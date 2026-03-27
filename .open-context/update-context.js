@@ -27,23 +27,97 @@ const node_child_process_1 = require("node:child_process");
 const node_fs_1 = __importDefault(require("node:fs"));
 // ─── Config Resolution ───────────────────────────────
 /**
- * Read API key and URL from .mcp.json in the project directory.
- * This is the primary path for developers — no desktop app needed.
+ * Parse an open-context server entry from an .mcp.json config object.
+ * Returns { url, apiKey } if found, or null.
+ */
+function parseOpenContextServer(config) {
+    // Try both "open-context" and "context-explorer" as server names
+    const server = config?.mcpServers?.["open-context"] ||
+        config?.mcpServers?.["context-explorer"];
+    if (!server?.url)
+        return null;
+    const authHeader = server.headers?.Authorization || server.headers?.authorization || "";
+    const apiKey = authHeader.replace(/^Bearer\s+/i, "").trim();
+    return { url: server.url, apiKey };
+}
+/**
+ * Read .mcp.json from a specific path. Returns parsed JSON or null.
+ */
+function readMcpJson(filePath) {
+    try {
+        return JSON.parse(node_fs_1.default.readFileSync(filePath, "utf-8"));
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * Extract open-context server config from ~/.claude.json
+ * Claude Code stores MCP servers in two places within this file:
+ * - `mcpServers` (user scope — global)
+ * - `projects[projectPath].mcpServers` (local scope — per-project)
+ */
+function parseClaudeJson(projectPath) {
+    const claudeJsonPath = node_path_1.default.join(node_os_1.default.homedir(), ".claude.json");
+    const config = readMcpJson(claudeJsonPath);
+    if (!config)
+        return null;
+    // Check local scope first (project-specific, highest priority)
+    const projectConfig = config.projects?.[projectPath];
+    if (projectConfig?.mcpServers) {
+        const parsed = parseOpenContextServer({ mcpServers: projectConfig.mcpServers });
+        if (parsed?.url && parsed?.apiKey)
+            return parsed;
+    }
+    // Then check user scope (global)
+    if (config.mcpServers) {
+        const parsed = parseOpenContextServer({ mcpServers: config.mcpServers });
+        if (parsed?.url && parsed?.apiKey)
+            return parsed;
+    }
+    return null;
+}
+/**
+ * Resolve API config by checking multiple locations where the MCP server
+ * URL and API key might be stored:
+ *
+ * 1. Project .mcp.json — committed to git, may have URL + key or just URL
+ * 2. ~/.claude.json local scope — per-project config from `claude mcp add`
+ * 3. ~/.claude.json user scope — global config from `claude mcp add --scope user`
+ *
+ * In a typical team setup:
+ * - Project .mcp.json is committed with just the URL (no key)
+ * - Each developer runs `claude mcp add` which writes their API key
+ *   to ~/.claude.json (local or user scope)
+ *
+ * The function merges: URL from project-level, API key from whichever has it.
  */
 function getApiConfig(projectPath) {
+    let serverUrl = null;
+    let apiKey = null;
+    // 1. Check project .mcp.json (committed to git)
+    const projectMcp = readMcpJson(node_path_1.default.join(projectPath, ".mcp.json"));
+    if (projectMcp) {
+        const parsed = parseOpenContextServer(projectMcp);
+        if (parsed?.url)
+            serverUrl = parsed.url;
+        if (parsed?.apiKey)
+            apiKey = parsed.apiKey;
+    }
+    // 2. Check ~/.claude.json (local scope then user scope)
+    if (!serverUrl || !apiKey) {
+        const claudeConfig = parseClaudeJson(projectPath);
+        if (claudeConfig) {
+            if (!serverUrl)
+                serverUrl = claudeConfig.url;
+            if (!apiKey)
+                apiKey = claudeConfig.apiKey;
+        }
+    }
+    if (!serverUrl || !apiKey)
+        return null;
     try {
-        const content = node_fs_1.default.readFileSync(node_path_1.default.join(projectPath, ".mcp.json"), "utf-8");
-        const config = JSON.parse(content);
-        const server = config?.mcpServers?.["open-context"];
-        if (!server?.url)
-            return null;
-        // Extract API key from headers
-        const authHeader = server.headers?.Authorization || server.headers?.authorization || "";
-        const apiKey = authHeader.replace(/^Bearer\s+/i, "").trim();
-        if (!apiKey)
-            return null;
-        // Derive REST API URL from MCP URL (same host, different path)
-        const mcpUrl = new URL(server.url);
+        const mcpUrl = new URL(serverUrl);
         const apiUrl = `${mcpUrl.protocol}//${mcpUrl.host}`;
         return { type: "remote", apiUrl, apiKey };
     }
@@ -106,6 +180,13 @@ function resolveConfig(projectPath) {
     const supabaseConfig = getSupabaseConfig();
     if (supabaseConfig)
         return supabaseConfig;
+    // Give a helpful hint if we found .mcp.json but it was missing the API key
+    const projectMcp = readMcpJson(node_path_1.default.join(projectPath, ".mcp.json"));
+    const hasServer = projectMcp && parseOpenContextServer(projectMcp);
+    if (hasServer && !hasServer.apiKey) {
+        throw new Error("found open-context server in .mcp.json but no API key. " +
+            "Run: claude mcp add open-context --type http --url <URL> --header 'Authorization: Bearer oc_live_...'");
+    }
     throw new Error("credentials not found");
 }
 // ─── Store Implementations ───────────────────────────
