@@ -88,7 +88,7 @@ export function SetupClaudeDialog({
       id: "mcp-json",
       icon: Plug,
       label: ".mcp.json",
-      description: "MCP server config so Claude Code auto-discovers Open Context tools",
+      description: "MCP server URL (commit this). Each dev adds their API key via `claude mcp add`",
       checked: mcpJson,
       onChange: setMcpJson,
       done: status.configured,
@@ -108,7 +108,7 @@ export function SetupClaudeDialog({
       icon: GitBranch,
       label: "Git pre-push hook",
       description:
-        "Smart context update on push — uses Claude Code to analyze changes and update module contexts automatically",
+        "Smart context update on push — auto-detects husky or uses native git hooks",
       checked: huskyHook,
       onChange: setHuskyHook,
       done: status.hasHuskyHook,
@@ -177,12 +177,12 @@ export function SetupClaudeDialog({
             <span className="text-xs font-medium">Remote MCP Server</span>
           </div>
           <p className="text-[10px] text-muted-foreground">
-            The .mcp.json config points to the remote Open Context MCP server.
-            No local server process needed — Claude Code connects via HTTP.
+            Run this command to add your API key to Claude Code.
+            For team members, generate per-developer keys in the Team tab.
           </p>
           <div className="mt-2">
             <p className="text-[10px] font-medium text-muted-foreground mb-1">
-              Or add manually via CLI:
+              Your CLI command (run once):
             </p>
             <div className="relative rounded-md bg-background border">
               <pre className="p-2 pr-8 text-[10px] font-mono whitespace-pre-wrap overflow-x-auto">

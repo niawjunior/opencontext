@@ -52,18 +52,18 @@ export function registerMcpServerHandlers(
       const opts = { mcpJson: true, claudeMd: true, huskyHook: false, ...options };
       const filesWritten: string[] = [];
 
-      // 1. Write .mcp.json with remote HTTP MCP config + auth
+      // 1. Write .mcp.json with remote HTTP MCP config (URL only — no API key)
+      // The API key should NOT be in the project .mcp.json because:
+      //   - This file is meant to be committed to git (provides URL for all devs)
+      //   - Each developer's API key lives in their ~/.claude.json (via `claude mcp add`)
+      //   - The CLI merges: URL from project .mcp.json + key from ~/.claude.json
       if (opts.mcpJson) {
-        const serverConfig: Record<string, unknown> = {
-          type: "http",
-          url: REMOTE_MCP_URL,
-        };
-        if (apiKey) {
-          serverConfig.headers = { Authorization: `Bearer ${apiKey}` };
-        }
         const mcpConfig = {
           mcpServers: {
-            "open-context": serverConfig,
+            "open-context": {
+              type: "http",
+              url: REMOTE_MCP_URL,
+            },
           },
         };
 
@@ -88,13 +88,13 @@ export function registerMcpServerHandlers(
         filesWritten.push(claudeMdPath);
       }
 
-      // 3. Set up husky pre-push hook
+      // 3. Set up git pre-push hook (husky or native)
       if (opts.huskyHook) {
         // Copy the update script into the project so the hook is portable
         await copyUpdateScript(project.path, updateScriptPath);
-        await setupHuskyHook(project.path);
+        const hookRelPath = await setupHuskyHook(project.path);
         filesWritten.push(path.join(project.path, ".open-context", "update-context.js"));
-        filesWritten.push(path.join(project.path, ".husky", "pre-push"));
+        filesWritten.push(path.join(project.path, hookRelPath));
       }
 
       return {
@@ -108,8 +108,8 @@ export function registerMcpServerHandlers(
   ipcMain.handle("mcp:setup-git-hook", async (_e, projectPath: string) => {
     const updateScriptPath = getUpdateScriptPath();
     await copyUpdateScript(projectPath, updateScriptPath);
-    await setupHuskyHook(projectPath);
-    return { hookPath: path.join(projectPath, ".husky", "pre-push") };
+    const hookRelPath = await setupHuskyHook(projectPath);
+    return { hookPath: path.join(projectPath, hookRelPath) };
   });
 
   ipcMain.handle("mcp:check-project-setup", async (_e, projectPath: string): Promise<{
@@ -133,10 +133,19 @@ export function registerMcpServerHandlers(
       hasClaudeMd = claudeMd.includes("Open Context");
     } catch { /* no CLAUDE.md */ }
 
-    try {
-      const hook = await fs.readFile(path.join(projectPath, ".husky", "pre-push"), "utf-8");
-      hasHuskyHook = hook.includes("context-update") || hook.includes("update-context");
-    } catch { /* no hook */ }
+    // Check both husky and native git hook locations
+    for (const hookPath of [
+      path.join(projectPath, ".husky", "pre-push"),
+      path.join(projectPath, ".git", "hooks", "pre-push"),
+    ]) {
+      try {
+        const hook = await fs.readFile(hookPath, "utf-8");
+        if (hook.includes("context-update") || hook.includes("update-context")) {
+          hasHuskyHook = true;
+          break;
+        }
+      } catch { /* not found, try next */ }
+    }
 
     return { configured, hasClaudeMd, hasHuskyHook };
   });
@@ -198,12 +207,7 @@ async function copyUpdateScript(
   }
 }
 
-async function setupHuskyHook(projectPath: string): Promise<void> {
-  const huskyDir = path.join(projectPath, ".husky");
-  await fs.mkdir(huskyDir, { recursive: true });
-
-  const hookPath = path.join(huskyDir, "pre-push");
-  const hookContent = `# Open Context: smart context update on push
+const HOOK_BODY = `# Open Context: smart context update on push
 # Uses Claude Code to analyze changes and update module contexts in the background
 # The update script auto-detects settings path per platform (macOS/Windows/Linux)
 CHANGED_FILES=$(git diff --name-only @{push}.. 2>/dev/null || git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
@@ -213,14 +217,50 @@ if [ -n "$CHANGED_FILES" ]; then
 fi
 `;
 
+/**
+ * Detect how git hooks are configured for this project.
+ * Returns the directory where pre-push should be written.
+ *
+ * Priority:
+ * 1. If husky is installed (core.hooksPath points to .husky), write to .husky/pre-push
+ * 2. Otherwise, write to .git/hooks/pre-push (native git hooks)
+ */
+async function resolveHookDir(projectPath: string): Promise<{ hookDir: string; isHusky: boolean }> {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const exec = promisify(execFile);
+
+  try {
+    const { stdout } = await exec("git", ["config", "core.hooksPath"], { cwd: projectPath });
+    const hooksPath = stdout.trim();
+    if (hooksPath && hooksPath.includes(".husky")) {
+      // Husky is installed — write the user-facing hook in .husky/ (not .husky/_)
+      return { hookDir: path.join(projectPath, ".husky"), isHusky: true };
+    }
+  } catch {
+    // core.hooksPath not set — use native git hooks
+  }
+
+  return { hookDir: path.join(projectPath, ".git", "hooks"), isHusky: false };
+}
+
+async function setupHuskyHook(projectPath: string): Promise<string> {
+  const { hookDir, isHusky } = await resolveHookDir(projectPath);
+  await fs.mkdir(hookDir, { recursive: true });
+
+  const hookPath = path.join(hookDir, "pre-push");
+
   try {
     const existing = await fs.readFile(hookPath, "utf-8");
     if (!existing.includes("context-update") && !existing.includes("update-context")) {
-      await fs.writeFile(hookPath, existing + "\n" + hookContent.split("\n").slice(1).join("\n"), "utf-8");
+      // Append our hook body (skip the first comment line to avoid double headers)
+      await fs.writeFile(hookPath, existing + "\n" + HOOK_BODY.split("\n").slice(1).join("\n"), "utf-8");
     }
   } catch {
-    await fs.writeFile(hookPath, hookContent, "utf-8");
+    await fs.writeFile(hookPath, HOOK_BODY, "utf-8");
   }
 
   await fs.chmod(hookPath, 0o755);
+
+  return isHusky ? ".husky/pre-push" : ".git/hooks/pre-push";
 }
