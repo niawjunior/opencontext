@@ -38,6 +38,18 @@ export class SupabaseDataStore implements IDataStore {
     return (data || []).map((r) => r.project_id);
   }
 
+  /**
+   * Verify member has access to a specific project.
+   * Throws if the member is not granted access.
+   * No-op for admin keys (memberId is null).
+   */
+  private async assertProjectAccess(projectId: string): Promise<void> {
+    const allowed = await this.getAllowedProjectIds();
+    if (allowed !== null && !allowed.includes(projectId)) {
+      throw new Error("Access denied: you do not have access to this project");
+    }
+  }
+
   async listProjects(): Promise<ProjectIndexEntry[]> {
     const allowed = await this.getAllowedProjectIds();
 
@@ -126,6 +138,7 @@ export class SupabaseDataStore implements IDataStore {
     id: string,
     data: Partial<Pick<Project, "name" | "path" | "description">>
   ): Promise<Project> {
+    await this.assertProjectAccess(id);
     const updates: Record<string, unknown> = { last_updated: new Date().toISOString() };
     if (data.name !== undefined) updates.name = data.name;
     if (data.path !== undefined) updates.path = data.path;
@@ -145,6 +158,7 @@ export class SupabaseDataStore implements IDataStore {
   }
 
   async deleteProject(id: string): Promise<void> {
+    await this.assertProjectAccess(id);
     // Modules cascade-delete via FK
     await this.client.from("context_documents").delete().eq("project_id", id);
     const { error } = await this.client
@@ -160,6 +174,7 @@ export class SupabaseDataStore implements IDataStore {
     projectId: string,
     data: Pick<Module, "name" | "type" | "path" | "context">
   ): Promise<Module> {
+    await this.assertProjectAccess(projectId);
     const now = new Date().toISOString();
     const { data: mod, error } = await this.client
       .from("modules")
@@ -204,6 +219,7 @@ export class SupabaseDataStore implements IDataStore {
       >
     >
   ): Promise<Module> {
+    await this.assertProjectAccess(projectId);
     const now = new Date().toISOString();
     const updates: Record<string, unknown> = { last_updated: now };
 
@@ -238,6 +254,7 @@ export class SupabaseDataStore implements IDataStore {
   }
 
   async deleteModule(projectId: string, moduleId: string): Promise<void> {
+    await this.assertProjectAccess(projectId);
     const { error } = await this.client
       .from("modules")
       .delete()
@@ -253,6 +270,7 @@ export class SupabaseDataStore implements IDataStore {
   }
 
   async getFullContext(projectId: string): Promise<ContextDocument | null> {
+    await this.assertProjectAccess(projectId);
     const { data, error } = await this.client
       .from("context_documents")
       .select("*")
@@ -272,6 +290,7 @@ export class SupabaseDataStore implements IDataStore {
     projectId: string,
     fullContext: string
   ): Promise<ContextDocument> {
+    await this.assertProjectAccess(projectId);
     const now = new Date().toISOString();
     const { error } = await this.client
       .from("context_documents")
