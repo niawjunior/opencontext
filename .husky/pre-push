@@ -1,7 +1,8 @@
 # Open Context: smart context update on push
 # Uses Claude Code to analyze changes and update module contexts in the background
+# The update script auto-detects settings path per platform (macOS/Windows/Linux)
 CHANGED_FILES=$(git diff --name-only @{push}.. 2>/dev/null || git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
 if [ -n "$CHANGED_FILES" ]; then
   echo "[open-context] Detecting affected modules..."
-  OPEN_CONTEXT_DATA_DIR="/Users/niawjunior/Library/Application Support/open-context/data" node "/Users/niawjunior/Desktop/lightwork/context-explorer/dist-mcp/cli/update-context.js" --smart --changed-files $CHANGED_FILES 2>&1 | grep "^\[context-update\]" || true
+  node ".open-context/update-context.js" --smart --changed-files $CHANGED_FILES 2>&1 | grep "^\[context-update\]" || true
 fi

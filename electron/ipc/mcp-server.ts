@@ -90,7 +90,10 @@ export function registerMcpServerHandlers(
 
       // 3. Set up husky pre-push hook
       if (opts.huskyHook) {
-        await setupHuskyHook(project.path, updateScriptPath, dataDir);
+        // Copy the update script into the project so the hook is portable
+        await copyUpdateScript(project.path, updateScriptPath);
+        await setupHuskyHook(project.path);
+        filesWritten.push(path.join(project.path, ".open-context", "update-context.js"));
         filesWritten.push(path.join(project.path, ".husky", "pre-push"));
       }
 
@@ -104,7 +107,8 @@ export function registerMcpServerHandlers(
 
   ipcMain.handle("mcp:setup-git-hook", async (_e, projectPath: string) => {
     const updateScriptPath = getUpdateScriptPath();
-    await setupHuskyHook(projectPath, updateScriptPath, dataDir);
+    await copyUpdateScript(projectPath, updateScriptPath);
+    await setupHuskyHook(projectPath);
     return { hookPath: path.join(projectPath, ".husky", "pre-push") };
   });
 
@@ -169,28 +173,50 @@ Use the MCP tools available to you:
 `;
 }
 
-async function setupHuskyHook(
+/**
+ * Copy the update-context.js script into the project's .open-context/ directory.
+ * This makes the hook portable — every developer who clones the repo has the script.
+ */
+async function copyUpdateScript(
   projectPath: string,
-  updateScriptPath: string,
-  dataDir: string
+  sourceScriptPath: string
 ): Promise<void> {
+  const destDir = path.join(projectPath, ".open-context");
+  await fs.mkdir(destDir, { recursive: true });
+
+  // Copy the main update script
+  const destPath = path.join(destDir, "update-context.js");
+  await fs.copyFile(sourceScriptPath, destPath);
+
+  // Also copy the smart-context-update script (sibling file)
+  const smartSrc = path.join(path.dirname(sourceScriptPath), "smart-context-update.js");
+  const smartDest = path.join(destDir, "smart-context-update.js");
+  try {
+    await fs.copyFile(smartSrc, smartDest);
+  } catch {
+    // Smart update script may not exist in all builds
+  }
+}
+
+async function setupHuskyHook(projectPath: string): Promise<void> {
   const huskyDir = path.join(projectPath, ".husky");
   await fs.mkdir(huskyDir, { recursive: true });
 
   const hookPath = path.join(huskyDir, "pre-push");
   const hookContent = `# Open Context: smart context update on push
 # Uses Claude Code to analyze changes and update module contexts in the background
+# The update script auto-detects settings path per platform (macOS/Windows/Linux)
 CHANGED_FILES=$(git diff --name-only @{push}.. 2>/dev/null || git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
 if [ -n "$CHANGED_FILES" ]; then
   echo "[open-context] Detecting affected modules..."
-  OPEN_CONTEXT_DATA_DIR="${dataDir}" node "${updateScriptPath}" --smart --changed-files $CHANGED_FILES 2>&1 | grep "^\\[context-update\\]" || true
+  node ".open-context/update-context.js" --smart --changed-files $CHANGED_FILES 2>&1 | grep "^\\[context-update\\]" || true
 fi
 `;
 
   try {
     const existing = await fs.readFile(hookPath, "utf-8");
     if (!existing.includes("context-update") && !existing.includes("update-context")) {
-      await fs.writeFile(hookPath, existing + "\n" + hookContent.split("\n").slice(3).join("\n"), "utf-8");
+      await fs.writeFile(hookPath, existing + "\n" + hookContent.split("\n").slice(1).join("\n"), "utf-8");
     }
   } catch {
     await fs.writeFile(hookPath, hookContent, "utf-8");
