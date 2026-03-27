@@ -27,11 +27,13 @@ Open Context is a desktop app + remote MCP server that maintains structured cont
 ```
 Developer pushes code
        ↓
-Git hook detects changed modules
+Pre-push hook reads API key from ~/.claude.json
        ↓
-Claude Code analyzes diffs in background
+Calls REST API (/api/context) to find affected modules
        ↓
-Submits updated context via MCP
+Spawns Claude Code in background to analyze diffs
+       ↓
+Submits updated context via MCP (pending review)
        ↓
 Admin reviews + approves in desktop app
        ↓
@@ -47,7 +49,10 @@ claude mcp add --transport http open-context https://open-context-mcp.vercel.app
   --header 'Authorization: Bearer oc_live_...'
 ```
 
-That's it. Claude Code can now access your project context via 6 MCP tools:
+This saves your API key to `~/.claude.json` (local to your machine, never committed).
+The project's `.mcp.json` (in git) has only the server URL — no secrets.
+
+Claude Code can now access your project context via 6 MCP tools:
 
 | Tool | Description |
 |------|-------------|
@@ -63,9 +68,10 @@ That's it. Claude Code can now access your project context via 6 MCP tools:
 The Electron app lets you:
 
 - **Manage projects** — add projects, scan for modules, generate context
+- **Setup projects** — writes `.mcp.json` (URL only), `CLAUDE.md`, git hook + `.open-context/` scripts
 - **Review AI updates** — approve or reject context changes submitted via MCP
 - **Track staleness** — see which modules are outdated based on git commits
-- **Manage team** — create members, generate API keys, control per-project access
+- **Manage team** — create members, generate per-developer API keys, control per-project access
 
 ## Architecture
 
@@ -80,9 +86,10 @@ The Electron app lets you:
 │  • Projects, modules, context documents     │
 │  • Team members, API keys, access control   │
 ├─────────────────────────────────────────────┤
-│  Remote MCP Server (Vercel)                 │
+│  Remote Server (Vercel)                     │
+│  • /mcp — 6 MCP tools for Claude Code       │
+│  • /api/context — REST API for git hooks    │
 │  • API key auth (SHA256 hashed)             │
-│  • 6 MCP tools for Claude Code              │
 │  • Member-scoped project filtering          │
 └─────────────────────────────────────────────┘
 ```
@@ -91,9 +98,10 @@ The Electron app lets you:
 
 - **Pending context workflow** — AI updates go through human review before becoming active
 - **Git-aware staleness** — each module tracks its git snapshot; commits since = staleness
-- **Smart git hooks** — pre-push spawns Claude in background (non-blocking)
+- **Smart git hooks** — pre-push hook calls REST API using dev's API key (no desktop app needed)
+- **No secrets in git** — `.mcp.json` has only the server URL; API keys live in each dev's `~/.claude.json`
 - **Member-scoped access** — API keys with `member_id` only see assigned projects; admin keys see everything
-- **Dual store pattern** — desktop app and MCP server both read/write the same Supabase database
+- **Dual access pattern** — Claude Code uses MCP protocol; git hooks use REST API; both auth via same API keys
 
 ## Development Setup
 
@@ -177,8 +185,12 @@ npm run electron:build:linux
 │   └── smart-context-update.ts  # Background Claude analysis
 ├── remote-server/
 │   ├── api/mcp.ts          # Vercel serverless MCP endpoint
+│   ├── api/context.ts      # REST API for git hook (no MCP needed)
 │   ├── lib/                # Auth + Supabase data store
 │   └── tools/              # 6 MCP tool implementations
+├── .open-context/          # Portable hook scripts (committed)
+│   ├── update-context.js   # Compiled CLI for pre-push hook
+│   └── smart-context-update.js
 ├── hooks/                  # React hooks (useElectron, useProjects, etc.)
 ├── lib/                    # Shared types and utilities
 └── supabase/migrations/    # Database schema
