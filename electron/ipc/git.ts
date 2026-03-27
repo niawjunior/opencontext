@@ -1,14 +1,16 @@
 import { ipcMain } from "electron";
-import type { DataStore } from "../store/data-store";
+import type { SupabaseStore } from "../store/supabase-store";
 import { GitService } from "../git/git-service";
 import { StalenessChecker } from "../git/staleness-checker";
 import { resolveSourceFiles } from "../git/resolve-source-files";
 
-export function registerGitHandlers(store: DataStore): void {
+export function registerGitHandlers(getStore: () => SupabaseStore | null): void {
   // Check staleness for all modules in a project
   ipcMain.handle(
     "git:check-project-staleness",
     async (_e, projectId: string) => {
+      const store = getStore();
+      if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
       const project = await store.getProject(projectId);
       if (!project) throw new Error("Project not found");
 
@@ -74,6 +76,8 @@ export function registerGitHandlers(store: DataStore): void {
   ipcMain.handle(
     "git:check-module-staleness",
     async (_e, projectId: string, moduleId: string) => {
+      const store = getStore();
+      if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
       const project = await store.getProject(projectId);
       if (!project) throw new Error("Project not found");
       const mod = project.modules.find((m) => m.id === moduleId);
@@ -94,6 +98,8 @@ export function registerGitHandlers(store: DataStore): void {
       moduleId: string,
       opts?: { maxCount?: number }
     ) => {
+      const store = getStore();
+      if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
       const project = await store.getProject(projectId);
       if (!project) throw new Error("Project not found");
       const mod = project.modules.find((m) => m.id === moduleId);

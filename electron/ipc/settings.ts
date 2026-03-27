@@ -1,14 +1,14 @@
 import { ipcMain } from "electron";
 import { execSync } from "node:child_process";
 import * as fs from "node:fs";
-import type { DataStore } from "../store/data-store";
+import type { SettingsStore } from "../store/settings-store";
 import type { AppSettings } from "../store/types";
 
-export function registerSettingsHandlers(store: DataStore): void {
-  ipcMain.handle("settings:get", () => store.getSettings());
+export function registerSettingsHandlers(settingsStore: SettingsStore): void {
+  ipcMain.handle("settings:get", () => settingsStore.getSettings());
 
   ipcMain.handle("settings:update", (_e, data: Partial<AppSettings>) =>
-    store.updateSettings(data)
+    settingsStore.updateSettings(data)
   );
 
   ipcMain.handle("settings:detect-cli", async () => {

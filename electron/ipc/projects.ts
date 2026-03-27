@@ -2,7 +2,7 @@ import { ipcMain } from "electron";
 import fg from "fast-glob";
 import path from "node:path";
 import fs from "node:fs/promises";
-import type { DataStore } from "../store/data-store";
+import type { SupabaseStore } from "../store/supabase-store";
 import type { ModuleType } from "../store/types";
 
 interface ScannedModule {
@@ -27,7 +27,6 @@ async function scanProject(projectPath: string): Promise<ScannedModule[]> {
   };
 
   // ── 1. Pages (Next.js app router) ─────────────────────────────
-  // Each route segment with a page.tsx is a page module
   const pages = await fg(
     ["app/**/page.{tsx,ts,jsx,js}", "src/app/**/page.{tsx,ts,jsx,js}"],
     { cwd: projectPath, ignore: ["**/node_modules/**", "**/.next/**"], onlyFiles: true }
@@ -35,7 +34,6 @@ async function scanProject(projectPath: string): Promise<ScannedModule[]> {
   for (const p of pages) {
     const dir = path.dirname(p);
     const segments = dir.split("/").filter((s) => s !== "app" && s !== "src");
-    // Skip route groups like (auth) — use the inner name
     const name = segments
       .filter((s) => !s.startsWith("("))
       .pop() || "home";
@@ -60,7 +58,6 @@ async function scanProject(projectPath: string): Promise<ScannedModule[]> {
   }
 
   // ── 3. API routes ─────────────────────────────────────────────
-  // Group API routes by their first path segment under api/
   const apiRoutes = await fg(
     [
       "app/api/**/route.{ts,js}",
@@ -72,7 +69,6 @@ async function scanProject(projectPath: string): Promise<ScannedModule[]> {
   );
   const apiGroups = new Map<string, string[]>();
   for (const p of apiRoutes) {
-    // Extract the API group: api/auth/[...nextauth]/route.ts → "auth"
     const match = p.match(/api\/([^/]+)/);
     const group = match?.[1] || "api";
     const existing = apiGroups.get(group) || [];
@@ -80,7 +76,6 @@ async function scanProject(projectPath: string): Promise<ScannedModule[]> {
     apiGroups.set(group, existing);
   }
   for (const [group, files] of apiGroups) {
-    // If group has multiple routes, point to the directory
     if (files.length > 1) {
       const apiDir = files[0].match(/(.*api\/[^/]+)/)?.[1] || path.dirname(files[0]);
       add(`api/${group}`, "api", apiDir);
@@ -90,17 +85,15 @@ async function scanProject(projectPath: string): Promise<ScannedModule[]> {
   }
 
   // ── 4. Feature folders (components with subfolders) ───────────
-  // Look for component directories that contain multiple files (feature modules)
   const componentDirs = ["src/components", "components"];
   for (const compDir of componentDirs) {
     try {
       const entries = await fs.readdir(path.join(projectPath, compDir), { withFileTypes: true });
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
-        if (entry.name === "ui" || entry.name === "icons") continue; // Skip UI primitives
+        if (entry.name === "ui" || entry.name === "icons") continue;
 
         const dirPath = path.join(compDir, entry.name);
-        // Check if this directory has files (not just re-exports)
         const files = await fg("**/*.{tsx,ts,jsx,js}", {
           cwd: path.join(projectPath, dirPath),
           ignore: ["**/*.test.*", "**/*.spec.*", "**/index.{ts,tsx,js,jsx}"],
@@ -159,20 +152,30 @@ async function scanProject(projectPath: string): Promise<ScannedModule[]> {
     add("config", "config", configs.join(", "));
   }
 
-  // Sort by type then name
   results.sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name));
   return results;
 }
 
-export function registerProjectHandlers(store: DataStore): void {
-  ipcMain.handle("projects:list", () => store.listProjects());
+export function registerProjectHandlers(getStore: () => SupabaseStore | null): void {
+  ipcMain.handle("projects:list", () => {
+    const store = getStore();
+    if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
+    return store.listProjects();
+  });
 
-  ipcMain.handle("projects:get", (_e, id: string) => store.getProject(id));
+  ipcMain.handle("projects:get", (_e, id: string) => {
+    const store = getStore();
+    if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
+    return store.getProject(id);
+  });
 
   ipcMain.handle(
     "projects:create",
-    (_e, data: { name: string; path: string; description: string }) =>
-      store.createProject(data)
+    (_e, data: { name: string; path: string; description: string }) => {
+      const store = getStore();
+      if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
+      return store.createProject(data);
+    }
   );
 
   ipcMain.handle(
@@ -181,25 +184,31 @@ export function registerProjectHandlers(store: DataStore): void {
       _e,
       id: string,
       data: Partial<{ name: string; path: string; description: string }>
-    ) => store.updateProject(id, data)
+    ) => {
+      const store = getStore();
+      if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
+      return store.updateProject(id, data);
+    }
   );
 
-  ipcMain.handle("projects:delete", (_e, id: string) =>
-    store.deleteProject(id)
-  );
+  ipcMain.handle("projects:delete", (_e, id: string) => {
+    const store = getStore();
+    if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
+    return store.deleteProject(id);
+  });
 
   ipcMain.handle("projects:scan-modules", async (_e, projectPath: string) => {
     return scanProject(projectPath);
   });
 
   ipcMain.handle("projects:get-coverage", async (_e, projectId: string) => {
+    const store = getStore();
+    if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
     const project = await store.getProject(projectId);
     if (!project) throw new Error("Project not found");
 
-    // Scan what the project SHOULD cover
     const scanned = await scanProject(project.path);
 
-    // Cross-reference against registered modules
     const items = scanned.map((s) => {
       const matched = project.modules.find(
         (m) => m.path === s.path || m.name === s.name

@@ -14,8 +14,9 @@ export interface ElectronAPI {
   getDataPath: () => Promise<string>;
   platform: NodeJS.Platform;
 
-  // Store change notifications
+  // Store
   onProjectChanged: (callback: (projectId: string) => void) => () => void;
+  reconnectStore: () => void;
 
   // Auto-update
   onUpdateAvailable: (callback: (info: unknown) => void) => () => void;
@@ -94,9 +95,6 @@ export interface ElectronAPI {
 
   // MCP Server
   mcp: {
-    start: () => Promise<McpStatus>;
-    stop: () => Promise<McpStatus>;
-    status: () => Promise<{ running: boolean; pid: number | null }>;
     getConfig: () => Promise<McpConfigSnippet>;
     setupProject: (
       projectId: string,
@@ -142,6 +140,18 @@ export interface ElectronAPI {
     isRepo: (projectPath: string) => Promise<boolean>;
   };
 
+  // Team
+  team: {
+    listMembers: () => Promise<MemberSummary[]>;
+    createMember: (data: { name: string; email?: string }) => Promise<{ id: string; name: string }>;
+    deleteMember: (memberId: string) => Promise<void>;
+    getMember: (memberId: string) => Promise<MemberDetail>;
+    generateKey: (memberId: string, keyName: string) => Promise<GeneratedKey>;
+    revokeKey: (keyId: string) => Promise<void>;
+    assignProject: (memberId: string, projectId: string) => Promise<void>;
+    unassignProject: (memberId: string, projectId: string) => Promise<void>;
+  };
+
   // Settings
   settings: {
     get: () => Promise<AppSettings>;
@@ -179,19 +189,51 @@ export interface GenerateProgress {
   status: "generating";
 }
 
-export interface McpStatus {
-  status: string;
-  pid?: number;
-}
-
 export interface McpConfigSnippet {
   mcpServers: {
     "open-context": {
-      command: string;
-      args: string[];
-      env: Record<string, string>;
+      type: string;
+      url: string;
+      headers?: Record<string, string>;
     };
   };
+}
+
+export interface MemberSummary {
+  id: string;
+  name: string;
+  email: string | null;
+  createdAt: string;
+  keyCount: number;
+}
+
+export interface MemberDetail {
+  id: string;
+  name: string;
+  email: string | null;
+  createdAt: string;
+  apiKeys: Array<{
+    id: string;
+    keyPrefix: string;
+    name: string;
+    createdAt: string;
+    lastUsedAt: string | null;
+    revokedAt: string | null;
+  }>;
+  projects: Array<{
+    id: string;
+    name: string;
+    path: string;
+    grantedAt: string;
+  }>;
+}
+
+export interface GeneratedKey {
+  id: string;
+  keyPrefix: string;
+  name: string;
+  createdAt: string;
+  rawKey: string;
 }
 
 export interface ScannedModule {

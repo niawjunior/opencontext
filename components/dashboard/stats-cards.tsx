@@ -3,7 +3,7 @@
 import {
   FolderOpen,
   Blocks,
-  Radio,
+  Globe,
   Clock,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,10 +14,9 @@ import type { ProjectIndexEntry } from "@/lib/types";
 interface StatsCardsProps {
   projects: ProjectIndexEntry[];
   totalModules: number;
-  mcpRunning: boolean;
 }
 
-export function StatsCards({ projects, totalModules, mcpRunning }: StatsCardsProps) {
+export function StatsCards({ projects, totalModules }: StatsCardsProps) {
   const lastUpdated = projects.length > 0
     ? formatRelativeDate(
         new Date(
@@ -49,12 +48,10 @@ export function StatsCards({ projects, totalModules, mcpRunning }: StatsCardsPro
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium">MCP Server</CardTitle>
-          <Radio className="h-4 w-4 text-muted-foreground" />
+          <Globe className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent>
-          <Badge variant={mcpRunning ? "default" : "secondary"}>
-            {mcpRunning ? "Running" : "Stopped"}
-          </Badge>
+          <Badge variant="default">Remote</Badge>
         </CardContent>
       </Card>
       <Card>

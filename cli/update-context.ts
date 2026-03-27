@@ -3,7 +3,7 @@
  * Standalone CLI script to update Open Context context.
  *
  * Usage:
- *   node dist-mcp/mcp-server/update-context.js [--project-path /path/to/project] [--changed-files file1 file2 ...]
+ *   node dist-mcp/cli/update-context.js [--project-path /path/to/project] [--changed-files file1 file2 ...]
  *
  * Can be used in:
  *   - Git hooks (husky pre-push)
@@ -19,23 +19,62 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawn as nodeSpawn } from "node:child_process";
 import fs from "node:fs";
-import { DataStore } from "../electron/store/data-store.js";
+import { createClient } from "@supabase/supabase-js";
 
-function getDataDir(): string {
-  if (process.env.OPEN_CONTEXT_DATA_DIR) {
-    return process.env.OPEN_CONTEXT_DATA_DIR;
+interface SupabaseConfig {
+  supabaseUrl: string;
+  supabaseKey: string;
+  orgId: string;
+}
+
+function getSupabaseConfig(): SupabaseConfig {
+  // First try env vars
+  if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.OPEN_CONTEXT_ORG_ID) {
+    return {
+      supabaseUrl: process.env.SUPABASE_URL,
+      supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+      orgId: process.env.OPEN_CONTEXT_ORG_ID,
+    };
   }
+
+  // Fallback: read from Electron settings.json
+  const settingsPath = getSettingsPath();
+  try {
+    const raw = fs.readFileSync(settingsPath, "utf-8");
+    const settings = JSON.parse(raw);
+    if (settings.supabaseUrl && settings.supabaseKey && settings.orgId) {
+      return {
+        supabaseUrl: settings.supabaseUrl,
+        supabaseKey: settings.supabaseKey,
+        orgId: settings.orgId,
+      };
+    }
+  } catch {
+    // Settings file doesn't exist or is invalid
+  }
+
+  throw new Error(
+    "Supabase credentials not found. Set SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and OPEN_CONTEXT_ORG_ID env vars, or configure in Open Context settings."
+  );
+}
+
+function getSettingsPath(): string {
   const platform = process.platform;
-  if (platform === "darwin") {
-    return path.join(os.homedir(), "Library", "Application Support", "Open Context", "data");
+  let dataDir: string;
+  if (process.env.OPEN_CONTEXT_DATA_DIR) {
+    dataDir = process.env.OPEN_CONTEXT_DATA_DIR;
+  } else if (platform === "darwin") {
+    dataDir = path.join(os.homedir(), "Library", "Application Support", "Open Context", "data");
   } else if (platform === "win32") {
-    return path.join(
+    dataDir = path.join(
       process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
       "Open Context",
       "data"
     );
+  } else {
+    dataDir = path.join(os.homedir(), ".config", "open-context", "data");
   }
-  return path.join(os.homedir(), ".config", "open-context", "data");
+  return path.join(dataDir, "settings.json");
 }
 
 function parseArgs(args: string[]): {
@@ -96,11 +135,93 @@ Environment:
   return { projectPath, changedFiles, regenerateAll, smart };
 }
 
-async function findProject(store: DataStore, projectPath: string) {
-  const projects = await store.listProjects();
+interface SimpleStore {
+  listProjects(orgId: string): Promise<Array<{ id: string; name: string; path: string; last_updated: string }>>;
+  getProject(orgId: string, id: string): Promise<{
+    id: string; name: string; path: string; description: string;
+    modules: Array<{ id: string; name: string; type: string; path: string; context: string; pendingContext?: string; pendingContextMeta?: unknown }>;
+  } | null>;
+  updateModule(projectId: string, moduleId: string, data: Record<string, unknown>): Promise<void>;
+  saveFullContext(projectId: string, fullContext: string): Promise<void>;
+}
+
+function createStore(config: SupabaseConfig): SimpleStore {
+  const client = createClient(config.supabaseUrl, config.supabaseKey);
+
+  return {
+    async listProjects(orgId: string) {
+      const { data, error } = await client
+        .from("projects")
+        .select("id, name, path, last_updated")
+        .eq("org_id", orgId)
+        .order("last_updated", { ascending: false });
+      if (error) throw new Error(`Failed to list projects: ${error.message}`);
+      return data || [];
+    },
+
+    async getProject(orgId: string, id: string) {
+      const { data: project, error: pErr } = await client
+        .from("projects")
+        .select("*")
+        .eq("id", id)
+        .eq("org_id", orgId)
+        .single();
+      if (pErr || !project) return null;
+
+      const { data: modules, error: mErr } = await client
+        .from("modules")
+        .select("*")
+        .eq("project_id", id)
+        .order("name");
+      if (mErr) throw new Error(`Failed to load modules: ${mErr.message}`);
+
+      return {
+        id: project.id,
+        name: project.name,
+        path: project.path,
+        description: project.description,
+        modules: (modules || []).map((m: Record<string, unknown>) => ({
+          id: m.id as string,
+          name: m.name as string,
+          type: m.type as string,
+          path: m.path as string,
+          context: (m.context as string) || "",
+          pendingContext: m.pending_context as string | undefined,
+          pendingContextMeta: m.pending_context_meta,
+        })),
+      };
+    },
+
+    async updateModule(projectId: string, moduleId: string, data: Record<string, unknown>) {
+      const updates: Record<string, unknown> = { last_updated: new Date().toISOString() };
+      if (data.pendingContextMeta !== undefined) updates.pending_context_meta = data.pendingContextMeta ?? null;
+      if (data.staleness !== undefined) updates.staleness = data.staleness ?? null;
+
+      const { error } = await client
+        .from("modules")
+        .update(updates)
+        .eq("id", moduleId)
+        .eq("project_id", projectId);
+      if (error) throw new Error(`Failed to update module: ${error.message}`);
+
+      await client.from("projects").update({ last_updated: new Date().toISOString() }).eq("id", projectId);
+    },
+
+    async saveFullContext(projectId: string, fullContext: string) {
+      const { error } = await client.from("context_documents").upsert({
+        project_id: projectId,
+        full_context: fullContext,
+        generated_at: new Date().toISOString(),
+      });
+      if (error) throw new Error(`Failed to save context: ${error.message}`);
+    },
+  };
+}
+
+async function findProject(store: SimpleStore, orgId: string, projectPath: string) {
+  const projects = await store.listProjects(orgId);
   const normalized = projectPath.replace(/\/$/, "");
 
-  // Find project by path (longest prefix match)
   let bestMatch = null;
   let bestLen = 0;
   for (const p of projects) {
@@ -114,7 +235,7 @@ async function findProject(store: DataStore, projectPath: string) {
   }
 
   if (!bestMatch) return null;
-  return store.getProject(bestMatch.id);
+  return store.getProject(orgId, bestMatch.id);
 }
 
 function buildFullContext(project: {
@@ -173,11 +294,16 @@ function hasMcpJson(projectPath: string): boolean {
   try {
     const content = fs.readFileSync(path.join(projectPath, ".mcp.json"), "utf-8");
     const config = JSON.parse(content);
-    for (const server of Object.values(config?.mcpServers || {})) {
-      const args = (server as { args?: string[] })?.args;
-      if (args?.some((a: string) => a.includes("open-context") || a.includes("context-explorer"))) {
-        return true;
-      }
+    const servers = config?.mcpServers || {};
+
+    // Check if "open-context" server key exists
+    if (servers["open-context"]) return true;
+
+    // Also check server values for URL or args referencing open-context
+    for (const server of Object.values(servers)) {
+      const s = server as { url?: string; args?: string[] };
+      if (s.url?.includes("open-context")) return true;
+      if (s.args?.some((a: string) => a.includes("open-context") || a.includes("context-explorer"))) return true;
     }
     return false;
   } catch {
@@ -221,13 +347,13 @@ function spawnSmartUpdate(
 
 async function main() {
   const { projectPath, changedFiles, regenerateAll, smart } = parseArgs(process.argv.slice(2));
-  const dataDir = getDataDir();
-  const store = new DataStore(dataDir);
+  const config = getSupabaseConfig();
+  const store = createStore(config);
 
   console.error(`[context-update] Looking for project at: ${projectPath}`);
-  console.error(`[context-update] Data directory: ${dataDir}`);
+  console.error(`[context-update] Using Supabase: ${config.supabaseUrl}`);
 
-  const project = await findProject(store, projectPath);
+  const project = await findProject(store, config.orgId, projectPath);
   if (!project) {
     console.error(`[context-update] No project found for path: ${projectPath}`);
     console.error("[context-update] Register this project in Open Context first.");

@@ -65,9 +65,10 @@ export interface AppSettings {
   claudeCliPath: string;
   dataDirectory: string;
   autoRebuildContext: boolean;
-  mcpServer: {
-    autoStart: boolean;
-  };
+  supabaseUrl: string;
+  supabaseKey: string;
+  orgId: string;
+  apiKey: string;
 }
 
 export interface CoverageItem {
@@ -98,12 +99,49 @@ export interface ScannedModule {
   path: string;
 }
 
+export interface MemberSummary {
+  id: string;
+  name: string;
+  email: string | null;
+  createdAt: string;
+  keyCount: number;
+}
+
+export interface MemberDetail {
+  id: string;
+  name: string;
+  email: string | null;
+  createdAt: string;
+  apiKeys: Array<{
+    id: string;
+    keyPrefix: string;
+    name: string;
+    createdAt: string;
+    lastUsedAt: string | null;
+    revokedAt: string | null;
+  }>;
+  projects: Array<{
+    id: string;
+    name: string;
+    path: string;
+    grantedAt: string;
+  }>;
+}
+
+export interface GeneratedKey {
+  id: string;
+  keyPrefix: string;
+  name: string;
+  createdAt: string;
+  rawKey: string;
+}
+
 export interface McpConfigSnippet {
   mcpServers: {
     "open-context": {
-      command: string;
-      args: string[];
-      env: Record<string, string>;
+      type: string;
+      url: string;
+      headers?: Record<string, string>;
     };
   };
 }

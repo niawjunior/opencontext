@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Plug, FileText, GitBranch, Terminal, Check, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Plug, FileText, GitBranch, Terminal, Check, Loader2, Copy } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { useElectron } from "@/hooks/use-electron";
+import { useSettings } from "@/hooks/use-settings";
 
 interface SetupStatus {
   configured: boolean;
@@ -41,10 +42,26 @@ export function SetupClaudeDialog({
   onComplete,
 }: SetupClaudeDialogProps) {
   const api = useElectron();
+  const { settings } = useSettings();
   const [setting, setSetting] = useState(false);
   const [mcpJson, setMcpJson] = useState(true);
   const [claudeMd, setClaudeMd] = useState(true);
   const [huskyHook, setHuskyHook] = useState(false);
+  const [copiedCmd, setCopiedCmd] = useState(false);
+
+  const apiKey = settings?.apiKey || "";
+  const cliCommand = `claude mcp add --transport http open-context ${
+    apiKey
+      ? `https://open-context-mcp.vercel.app/mcp --header 'Authorization: Bearer ${apiKey}'`
+      : "https://open-context-mcp.vercel.app/mcp --header 'Authorization: Bearer <your-api-key>'"
+  }`;
+
+  const copyCliCommand = async () => {
+    await navigator.clipboard.writeText(cliCommand);
+    setCopiedCmd(true);
+    toast.success("Command copied to clipboard");
+    setTimeout(() => setCopiedCmd(false), 2000);
+  };
 
   const handleSetup = async () => {
     if (!api) return;
@@ -153,18 +170,43 @@ export function SetupClaudeDialog({
           ))}
         </div>
 
-        {/* CLI info */}
-        <div className="rounded-lg bg-muted/50 p-3">
+        {/* Remote MCP info */}
+        <div className="rounded-lg bg-muted/50 p-3 space-y-2">
           <div className="flex items-center gap-2 mb-1.5">
             <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-xs font-medium">CLI Usage</span>
+            <span className="text-xs font-medium">Remote MCP Server</span>
           </div>
-          <p className="text-[10px] text-muted-foreground mb-1.5">
-            You can also trigger context updates from any script or CI pipeline:
+          <p className="text-[10px] text-muted-foreground">
+            The .mcp.json config points to the remote Open Context MCP server.
+            No local server process needed — Claude Code connects via HTTP.
           </p>
-          <code className="text-[10px] font-mono bg-background px-2 py-1 rounded block break-all">
-            node &lt;app-path&gt;/dist-mcp/cli/update-context.js --regenerate-all
-          </code>
+          <div className="mt-2">
+            <p className="text-[10px] font-medium text-muted-foreground mb-1">
+              Or add manually via CLI:
+            </p>
+            <div className="relative rounded-md bg-background border">
+              <pre className="p-2 pr-8 text-[10px] font-mono whitespace-pre-wrap overflow-x-auto">
+                {cliCommand}
+              </pre>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute top-1 right-1 h-5 w-5"
+                onClick={copyCliCommand}
+              >
+                {copiedCmd ? (
+                  <Check className="h-2.5 w-2.5" />
+                ) : (
+                  <Copy className="h-2.5 w-2.5" />
+                )}
+              </Button>
+            </div>
+            {!apiKey && (
+              <p className="text-[10px] text-amber-500 mt-1">
+                Set your API key in Settings → Database to include authentication.
+              </p>
+            )}
+          </div>
         </div>
 
         <DialogFooter>

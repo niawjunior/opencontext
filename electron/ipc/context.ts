@@ -2,26 +2,36 @@ import { ipcMain } from "electron";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { DataStore } from "../store/data-store";
+import type { SupabaseStore } from "../store/supabase-store";
+import type { SettingsStore } from "../store/settings-store";
 
 export function registerContextHandlers(
-  store: DataStore,
+  getStore: () => SupabaseStore | null,
+  settingsStore: SettingsStore,
   _getMainWindow?: unknown
 ): void {
-  ipcMain.handle("context:get-full", (_e, projectId: string) =>
-    store.getFullContext(projectId)
-  );
+  ipcMain.handle("context:get-full", (_e, projectId: string) => {
+    const store = getStore();
+    if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
+    return store.getFullContext(projectId);
+  });
 
   ipcMain.handle(
     "context:save-full",
-    (_e, projectId: string, content: string) =>
-      store.saveFullContext(projectId, content)
+    (_e, projectId: string, content: string) => {
+      const store = getStore();
+      if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
+      return store.saveFullContext(projectId, content);
+    }
   );
 
   ipcMain.handle(
     "context:search",
-    (_e, query: string, projectId?: string) =>
-      store.searchContexts(query, projectId)
+    (_e, query: string, projectId?: string) => {
+      const store = getStore();
+      if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
+      return store.searchContexts(query, projectId);
+    }
   );
 
   // Helper to run Claude CLI analysis
@@ -82,7 +92,7 @@ Format as clean markdown. Be thorough but concise. Focus on what's most useful f
   ipcMain.handle(
     "context:analyze-module",
     async (_e, projectPath: string, modulePath: string, moduleType: string) => {
-      const settings = await store.getSettings();
+      const settings = await settingsStore.getSettings();
       const claudePath = settings.claudeCliPath || "claude";
       return runClaudeAnalysis(claudePath, projectPath, modulePath, moduleType);
     }
@@ -91,7 +101,7 @@ Format as clean markdown. Be thorough but concise. Focus on what's most useful f
   ipcMain.handle(
     "context:resync-module",
     async (_e, projectPath: string, modulePath: string, moduleType: string) => {
-      const settings = await store.getSettings();
+      const settings = await settingsStore.getSettings();
       const claudePath = settings.claudeCliPath || "claude";
       const newContext = await runClaudeAnalysis(claudePath, projectPath, modulePath, moduleType);
       return { newContext };
@@ -99,10 +109,11 @@ Format as clean markdown. Be thorough but concise. Focus on what's most useful f
   );
 
   ipcMain.handle("context:generate", async (_e, projectId: string) => {
+    const store = getStore();
+    if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
     const project = await store.getProject(projectId);
     if (!project) throw new Error("Project not found");
 
-    // Group modules by type
     const grouped = new Map<string, typeof project.modules>();
     for (const mod of project.modules) {
       const group = grouped.get(mod.type) || [];
@@ -120,10 +131,8 @@ Format as clean markdown. Be thorough but concise. Focus on what's most useful f
       config: "Configuration",
     };
 
-    // Build the document from a template
     const sections: string[] = [];
 
-    // Header
     sections.push(`# ${project.name}`);
     if (project.description) {
       sections.push(`> ${project.description}`);
@@ -131,7 +140,6 @@ Format as clean markdown. Be thorough but concise. Focus on what's most useful f
     sections.push(`**Path:** ${project.path}`);
     sections.push(`**Modules:** ${project.modules.length}`);
 
-    // Module sections grouped by type
     if (project.modules.length > 0) {
       sections.push("## Modules");
 
@@ -159,6 +167,8 @@ Format as clean markdown. Be thorough but concise. Focus on what's most useful f
   });
 
   ipcMain.handle("context:export-to-project", async (_e, projectId: string) => {
+    const store = getStore();
+    if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
     const project = await store.getProject(projectId);
     if (!project) throw new Error("Project not found");
     const doc = await store.getFullContext(projectId);

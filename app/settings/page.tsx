@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
-  Play,
-  Square,
   Copy,
   Check,
   Terminal,
   FolderOpen,
   Loader2,
+  Globe,
 } from "lucide-react";
 import { PageContainer } from "@/components/shared/page-container";
 import {
@@ -21,9 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -34,14 +31,12 @@ import {
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { useSettings } from "@/hooks/use-settings";
-import { useMcpStatus } from "@/hooks/use-mcp-status";
 import { useElectron } from "@/hooks/use-electron";
 import type { McpConfigSnippet } from "@/lib/types";
 
 export default function SettingsPage() {
   const api = useElectron();
   const { settings, update } = useSettings();
-  const mcp = useMcpStatus();
   const [claudePath, setClaudePath] = useState("");
   const [copied, setCopied] = useState(false);
   const [appVersion, setAppVersion] = useState("");
@@ -49,12 +44,21 @@ export default function SettingsPage() {
   const [detecting, setDetecting] = useState(false);
   const [mcpConfig, setMcpConfig] = useState<string>("");
   const [saved, setSaved] = useState(false);
+  const [supabaseUrl, setSupabaseUrl] = useState("");
+  const [supabaseKey, setSupabaseKey] = useState("");
+  const [orgId, setOrgId] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [testingConnection, setTestingConnection] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const savedIndicatorRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     if (settings) {
       setClaudePath(settings.claudeCliPath);
+      setSupabaseUrl(settings.supabaseUrl || "");
+      setSupabaseKey(settings.supabaseKey || "");
+      setOrgId(settings.orgId || "");
+      setApiKey(settings.apiKey || "");
     }
   }, [settings]);
 
@@ -68,7 +72,6 @@ export default function SettingsPage() {
     }
   }, [api]);
 
-  // Auto-save helper with debounce
   const autoSave = useCallback(
     (data: Record<string, unknown>) => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -86,7 +89,6 @@ export default function SettingsPage() {
     [update]
   );
 
-  // Auto-save when claudePath changes (after initial load)
   const initialLoadRef = useRef(true);
   useEffect(() => {
     if (initialLoadRef.current) {
@@ -94,9 +96,7 @@ export default function SettingsPage() {
       return;
     }
     if (!settings) return;
-    autoSave({
-      claudeCliPath: claudePath,
-    });
+    autoSave({ claudeCliPath: claudePath });
   }, [claudePath, autoSave, settings]);
 
   const handleDetectCli = async () => {
@@ -121,6 +121,37 @@ export default function SettingsPage() {
       title: "Select Claude CLI Executable",
     });
     if (file) setClaudePath(file);
+  };
+
+  // Auto-save database settings
+  const dbInitialLoadRef = useRef(true);
+  useEffect(() => {
+    if (dbInitialLoadRef.current) {
+      dbInitialLoadRef.current = false;
+      return;
+    }
+    if (!settings) return;
+    autoSave({ supabaseUrl, supabaseKey, orgId, apiKey });
+  }, [supabaseUrl, supabaseKey, orgId, apiKey, autoSave, settings]);
+
+  const handleTestConnection = async () => {
+    if (!api) return;
+    setTestingConnection(true);
+    try {
+      // Save current credentials first
+      await update({ supabaseUrl, supabaseKey, orgId });
+      // Trigger store reconnection
+      api.reconnectStore();
+      // Wait a moment for the store to reconnect
+      await new Promise((r) => setTimeout(r, 500));
+      // Try listing projects
+      const projects = await api.projects.list();
+      toast.success(`Connected! Found ${projects.length} project(s).`);
+    } catch (err) {
+      toast.error(`Connection failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setTestingConnection(false);
+    }
   };
 
   const copyConfig = async () => {
@@ -148,6 +179,7 @@ export default function SettingsPage() {
         <div className="flex items-center gap-3">
           <TabsList>
             <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="database">Database</TabsTrigger>
             <TabsTrigger value="mcp">MCP Server</TabsTrigger>
           </TabsList>
           {saved && (
@@ -237,47 +269,103 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="database" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Supabase Connection</CardTitle>
+              <CardDescription>
+                Connect to your Supabase database for project data storage
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="supabase-url">Supabase URL</Label>
+                <Input
+                  id="supabase-url"
+                  value={supabaseUrl}
+                  onChange={(e) => setSupabaseUrl(e.target.value)}
+                  placeholder="https://your-project.supabase.co"
+                  className="font-mono text-sm h-8"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="supabase-key">Service Role Key</Label>
+                <Input
+                  id="supabase-key"
+                  type="password"
+                  value={supabaseKey}
+                  onChange={(e) => setSupabaseKey(e.target.value)}
+                  placeholder="eyJhbGciOiJIUzI1NiIs..."
+                  className="font-mono text-sm h-8"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Found in Supabase Dashboard &gt; Settings &gt; API &gt; service_role key
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="org-id">Organization ID</Label>
+                <Input
+                  id="org-id"
+                  value={orgId}
+                  onChange={(e) => setOrgId(e.target.value)}
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  className="font-mono text-sm h-8"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="api-key">API Key</Label>
+                <Input
+                  id="api-key"
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="oc_live_..."
+                  className="font-mono text-sm h-8"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Used for MCP server authentication. Included in .mcp.json and CLI commands.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleTestConnection}
+                  disabled={testingConnection || !supabaseUrl || !supabaseKey || !orgId}
+                >
+                  {testingConnection ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                  ) : null}
+                  Test Connection
+                </Button>
+                <p className="text-[10px] text-muted-foreground">
+                  Changes are saved automatically
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="mcp" className="space-y-4 mt-4">
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>MCP Server Status</CardTitle>
+                  <CardTitle>Remote MCP Server</CardTitle>
                   <CardDescription>
-                    The MCP server exposes your project contexts to Claude Code
+                    The MCP server runs remotely and exposes your project contexts to Claude Code
                   </CardDescription>
                 </div>
-                <Badge variant={mcp.running ? "default" : "secondary"}>
-                  {mcp.running ? "Running" : "Stopped"}
+                <Badge variant="default">
+                  <Globe className="h-3 w-3 mr-1" />
+                  Remote
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                {mcp.running ? (
-                  <Button variant="destructive" size="sm" onClick={mcp.stop}>
-                    <Square className="h-3 w-3 mr-1" />
-                    Stop
-                  </Button>
-                ) : (
-                  <Button size="sm" onClick={mcp.start}>
-                    <Play className="h-3 w-3 mr-1" />
-                    Start
-                  </Button>
-                )}
-              </div>
-
-              <Separator />
-
-              <div className="flex items-center justify-between">
-                <Label>Auto-start on launch</Label>
-                <Switch
-                  checked={settings.mcpServer.autoStart}
-                  onCheckedChange={(checked) =>
-                    update({ mcpServer: { autoStart: checked } })
-                  }
-                />
-              </div>
+            <CardContent>
+              <p className="text-xs text-muted-foreground">
+                No local server process needed. Claude Code connects directly to the remote MCP server via HTTP.
+              </p>
             </CardContent>
           </Card>
 
@@ -285,8 +373,7 @@ export default function SettingsPage() {
             <CardHeader>
               <CardTitle>Claude Code Configuration</CardTitle>
               <CardDescription>
-                Add this to your <code className="text-xs">.mcp.json</code> or{" "}
-                <code className="text-xs">~/.claude.json</code> to connect
+                Add this to your <code className="text-xs">.mcp.json</code> to connect, or use the Setup button on any project
               </CardDescription>
             </CardHeader>
             <CardContent>

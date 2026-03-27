@@ -1,80 +1,39 @@
 import { ipcMain, app } from "electron";
-import { type ChildProcess, spawn } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs/promises";
-import type { DataStore } from "../store/data-store";
+import type { SupabaseStore } from "../store/supabase-store";
+import type { SettingsStore } from "../store/settings-store";
 
-let mcpProcess: ChildProcess | null = null;
+// Remote MCP server URL
+const REMOTE_MCP_URL = "https://open-context-mcp.vercel.app/mcp";
 
-function getMcpScriptPath(): string {
+function getUpdateScriptPath(): string {
   if (app.isPackaged) {
-    return path.join(process.resourcesPath, "dist-mcp", "mcp-server", "index.js");
+    return path.join(process.resourcesPath, "dist-mcp", "cli", "update-context.js");
   }
-  // esbuild bundles everything into dist-electron/ (flat), so __dirname is dist-electron/
-  return path.join(__dirname, "..", "dist-mcp", "mcp-server", "index.js");
+  return path.join(__dirname, "..", "dist-mcp", "cli", "update-context.js");
 }
 
-export function registerMcpServerHandlers(dataDir: string, store?: DataStore): void {
-  ipcMain.handle("mcp:start", () => {
-    if (mcpProcess && !mcpProcess.killed) {
-      return { status: "already_running", pid: mcpProcess.pid };
+export function registerMcpServerHandlers(
+  dataDir: string,
+  getStore?: () => SupabaseStore | null,
+  settingsStore?: SettingsStore
+): void {
+  ipcMain.handle("mcp:get-config", async () => {
+    const apiKey = settingsStore ? (await settingsStore.getSettings()).apiKey : "";
+    const config: Record<string, unknown> = {
+      type: "http",
+      url: REMOTE_MCP_URL,
+    };
+    if (apiKey) {
+      config.headers = { Authorization: `Bearer ${apiKey}` };
     }
-
-    const scriptPath = getMcpScriptPath();
-
-    mcpProcess = spawn("node", [scriptPath], {
-      env: { ...process.env, OPEN_CONTEXT_DATA_DIR: dataDir },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-
-    mcpProcess.stderr?.on("data", (data: Buffer) => {
-      console.log("[mcp-server]", data.toString().trim());
-    });
-
-    mcpProcess.on("exit", (code) => {
-      console.log(`[mcp-server] exited with code ${code}`);
-      mcpProcess = null;
-    });
-
-    return { status: "started", pid: mcpProcess.pid };
-  });
-
-  ipcMain.handle("mcp:stop", () => {
-    if (!mcpProcess || mcpProcess.killed) {
-      return { status: "not_running" };
-    }
-    mcpProcess.kill();
-    mcpProcess = null;
-    return { status: "stopped" };
-  });
-
-  ipcMain.handle("mcp:status", () => ({
-    running: mcpProcess !== null && !mcpProcess.killed,
-    pid: mcpProcess?.pid ?? null,
-  }));
-
-  ipcMain.handle("mcp:get-config", () => {
-    const scriptPath = getMcpScriptPath();
-
     return {
       mcpServers: {
-        "open-context": {
-          command: "node",
-          args: [scriptPath],
-          env: {
-            OPEN_CONTEXT_DATA_DIR: dataDir,
-          },
-        },
+        "open-context": config,
       },
     };
   });
-
-  function getUpdateScriptPath(): string {
-    if (app.isPackaged) {
-      return path.join(process.resourcesPath, "dist-mcp", "cli", "update-context.js");
-    }
-    return path.join(__dirname, "..", "dist-mcp", "cli", "update-context.js");
-  }
 
   ipcMain.handle(
     "mcp:setup-project",
@@ -83,26 +42,28 @@ export function registerMcpServerHandlers(dataDir: string, store?: DataStore): v
       projectId: string,
       options?: { mcpJson?: boolean; claudeMd?: boolean; huskyHook?: boolean }
     ) => {
-      if (!store) throw new Error("Store not available");
+      const store = getStore?.();
+      if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
       const project = await store.getProject(projectId);
       if (!project) throw new Error("Project not found");
 
-      const scriptPath = getMcpScriptPath();
+      const apiKey = settingsStore ? (await settingsStore.getSettings()).apiKey : "";
       const updateScriptPath = getUpdateScriptPath();
       const opts = { mcpJson: true, claudeMd: true, huskyHook: false, ...options };
       const filesWritten: string[] = [];
 
-      // 1. Write .mcp.json
+      // 1. Write .mcp.json with remote HTTP MCP config + auth
       if (opts.mcpJson) {
+        const serverConfig: Record<string, unknown> = {
+          type: "http",
+          url: REMOTE_MCP_URL,
+        };
+        if (apiKey) {
+          serverConfig.headers = { Authorization: `Bearer ${apiKey}` };
+        }
         const mcpConfig = {
           mcpServers: {
-            "open-context": {
-              command: "node",
-              args: [scriptPath],
-              env: {
-                OPEN_CONTEXT_DATA_DIR: dataDir,
-              },
-            },
+            "open-context": serverConfig,
           },
         };
 
@@ -114,7 +75,7 @@ export function registerMcpServerHandlers(dataDir: string, store?: DataStore): v
       // 2. Write/update CLAUDE.md with context management instructions
       if (opts.claudeMd) {
         const claudeMdPath = path.join(project.path, "CLAUDE.md");
-        const contextBlock = buildClaudeMdBlock(updateScriptPath, dataDir);
+        const contextBlock = buildClaudeMdBlock();
 
         try {
           const existing = await fs.readFile(claudeMdPath, "utf-8");
@@ -177,12 +138,21 @@ export function registerMcpServerHandlers(dataDir: string, store?: DataStore): v
   });
 }
 
-function buildClaudeMdBlock(updateScriptPath: string, dataDir: string): string {
+function buildClaudeMdBlock(): string {
   return `
-## Project Context (Open Context)
+## Project Context (Open Context) — IMPORTANT
 
-This project uses **Open Context** for AI context management. Module-level documentation
-is maintained in Open Context and served via MCP.
+This project uses **Open Context** for AI context management.
+
+### REQUIRED: Update context after code changes
+After you finish writing or modifying code, you MUST update the relevant module context:
+
+1. Call \`resolve_project\` to get the project ID
+2. Call \`list_modules\` to find which module(s) you changed
+3. Call \`update_module_context\` with the updated context markdown for each affected module
+
+This keeps the project documentation in sync. The context goes through a review flow —
+the developer will see a diff and approve/reject your update in the Open Context app.
 
 ### How to access context
 Use the MCP tools available to you:
@@ -192,28 +162,10 @@ Use the MCP tools available to you:
 - \`get_module_context\` — get detailed context for a specific module
 - \`search_context\` — search across all context
 
-### When to update context
-After making **significant code changes** (new features, refactored modules, changed APIs),
-update the relevant module context using the \`update_module_context\` MCP tool:
-
-\`\`\`
-update_module_context({
-  projectId: "<resolved-project-id>",
-  modulePath: "path/to/changed/module",
-  context: "Updated markdown describing what this module does..."
-})
-\`\`\`
-
-Or rebuild the full context document:
-\`\`\`bash
-OPEN_CONTEXT_DATA_DIR="${dataDir}" node "${updateScriptPath}" --regenerate-all
-\`\`\`
-
 ### What triggers context updates
-- **Manual**: Click "Sync" on any module in Open Context
-- **Claude Code**: Use \`update_module_context\` MCP tool after code changes
-- **Git hook**: On push, uses Claude Code to analyze changes and submit updated contexts (background)
-- **CLI**: \`node "${updateScriptPath}" --smart --changed-files <files>\`
+- **AI (you)**: Use \`update_module_context\` MCP tool after code changes (goes through approval)
+- **Git hook**: Auto-marks affected modules as stale on push
+- **Manual**: Developer clicks "Sync" on any module in Open Context
 `;
 }
 
@@ -223,8 +175,6 @@ async function setupHuskyHook(
   dataDir: string
 ): Promise<void> {
   const huskyDir = path.join(projectPath, ".husky");
-
-  // Create .husky directory if it doesn't exist
   await fs.mkdir(huskyDir, { recursive: true });
 
   const hookPath = path.join(huskyDir, "pre-push");
@@ -241,18 +191,13 @@ fi
 `;
 
   try {
-    // Check if hook already exists
     const existing = await fs.readFile(hookPath, "utf-8");
     if (!existing.includes("context-update") && !existing.includes("update-context")) {
-      // Append to existing hook
       await fs.writeFile(hookPath, existing + "\n" + hookContent.split("\n").slice(3).join("\n"), "utf-8");
     }
   } catch {
-    // No existing hook — create new one
     await fs.writeFile(hookPath, hookContent, "utf-8");
   }
 
-  // Make executable
   await fs.chmod(hookPath, 0o755);
 }
-

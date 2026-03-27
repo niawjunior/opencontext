@@ -1,5 +1,4 @@
-// Types shared with the rest of the app
-// (Duplicated from shared/types.ts to stay within electron rootDir)
+// Shared types used by both the local DataStore and remote SupabaseDataStore
 
 export interface Project {
   id: string;
@@ -68,37 +67,3 @@ export interface SearchResult {
   moduleName?: string;
   snippet: string;
 }
-
-// Local-only types (not needed by remote server)
-export interface ProjectIndex {
-  projects: ProjectIndexEntry[];
-  lastModified: string;
-}
-
-export interface AppSettings {
-  claudeCliPath: string;
-  dataDirectory: string;
-  autoRebuildContext: boolean;
-  supabaseUrl: string;
-  supabaseKey: string;
-  orgId: string;
-  apiKey: string; // oc_live_... key for MCP server auth
-}
-
-export interface CoverageItem {
-  name: string;
-  path: string;
-  covered: boolean;
-  moduleId?: string;
-  moduleName?: string;
-}
-
-export const DEFAULT_SETTINGS: AppSettings = {
-  claudeCliPath: "claude",
-  dataDirectory: "",
-  autoRebuildContext: true,
-  supabaseUrl: "",
-  supabaseKey: "",
-  orgId: "",
-  apiKey: "",
-};

@@ -1,10 +1,10 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { DataStore } from "../../electron/store/data-store.js";
+import type { IDataStore } from "../shared/data-store-interface.js";
 
 export function registerUpdateModuleContextTool(
   server: McpServer,
-  store: DataStore
+  store: IDataStore
 ): void {
   server.tool(
     "update_module_context",

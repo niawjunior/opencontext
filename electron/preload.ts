@@ -94,9 +94,6 @@ const electronAPI = {
 
   // MCP Server
   mcp: {
-    start: (): Promise<unknown> => ipcRenderer.invoke("mcp:start"),
-    stop: (): Promise<unknown> => ipcRenderer.invoke("mcp:stop"),
-    status: (): Promise<unknown> => ipcRenderer.invoke("mcp:status"),
     getConfig: (): Promise<unknown> => ipcRenderer.invoke("mcp:get-config"),
     setupProject: (
       projectId: string,
@@ -125,6 +122,30 @@ const electronAPI = {
       ipcRenderer.invoke("git:resolve-source-files", projectPath, modulePath),
     isRepo: (projectPath: string): Promise<unknown> =>
       ipcRenderer.invoke("git:is-repo", projectPath),
+  },
+
+  // Team
+  team: {
+    listMembers: (): Promise<unknown> => ipcRenderer.invoke("team:list-members"),
+    createMember: (data: { name: string; email?: string }): Promise<unknown> =>
+      ipcRenderer.invoke("team:create-member", data),
+    deleteMember: (memberId: string): Promise<unknown> =>
+      ipcRenderer.invoke("team:delete-member", memberId),
+    getMember: (memberId: string): Promise<unknown> =>
+      ipcRenderer.invoke("team:get-member", memberId),
+    generateKey: (memberId: string, keyName: string): Promise<unknown> =>
+      ipcRenderer.invoke("team:generate-key", memberId, keyName),
+    revokeKey: (keyId: string): Promise<unknown> =>
+      ipcRenderer.invoke("team:revoke-key", keyId),
+    assignProject: (memberId: string, projectId: string): Promise<unknown> =>
+      ipcRenderer.invoke("team:assign-project", memberId, projectId),
+    unassignProject: (memberId: string, projectId: string): Promise<unknown> =>
+      ipcRenderer.invoke("team:unassign-project", memberId, projectId),
+  },
+
+  // Store reconnect (after settings change)
+  reconnectStore: (): void => {
+    ipcRenderer.send("store:reconnect");
   },
 
   // Settings

@@ -9,8 +9,8 @@ import {
 } from "electron";
 import log from "electron-log";
 import path from "node:path";
-import fs from "node:fs";
-import { DataStore } from "./store/data-store";
+import { SupabaseStore } from "./store/supabase-store";
+import { SettingsStore } from "./store/settings-store";
 import { resolveDataDir } from "./store/paths";
 import { registerProjectHandlers } from "./ipc/projects";
 import { registerModuleHandlers } from "./ipc/modules";
@@ -19,6 +19,7 @@ import { registerMcpServerHandlers } from "./ipc/mcp-server";
 import { registerSettingsHandlers } from "./ipc/settings";
 import { registerDialogHandlers } from "./ipc/dialog";
 import { registerGitHandlers } from "./ipc/git";
+import { registerTeamHandlers } from "./ipc/team";
 
 // Configure logging
 log.transports.file.level = "info";
@@ -225,86 +226,73 @@ function createMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-// ─── Data Migration ─────────────────────────────────────────────────
-/**
- * Migrate data from old "Context Explorer" directory to new "Open Context" location.
- * Runs once — if old dir exists and new dir doesn't, moves it over.
- */
-function migrateOldDataDir(newUserDataPath: string): void {
-  // Handle both production ("Open Context" → "Context Explorer")
-  // and dev mode ("open-context" → "context-explorer")
-  const oldNames = [
-    newUserDataPath.replace(/Open Context$/, "Context Explorer"),
-    newUserDataPath.replace(/open-context$/, "context-explorer"),
-  ];
-
-  const newDataDir = path.join(newUserDataPath, "data");
-
-  // Check if new data dir already has real content (projects-index with entries)
-  try {
-    const indexPath = path.join(newDataDir, "projects-index.json");
-    if (fs.existsSync(indexPath)) {
-      const content = JSON.parse(fs.readFileSync(indexPath, "utf-8"));
-      if (Array.isArray(content.projects) && content.projects.length > 0) {
-        return; // new location already has projects
-      }
-    }
-  } catch { /* continue with migration */ }
-
-  for (const oldName of oldNames) {
-    if (oldName === newUserDataPath) continue;
-    const oldDataDir = path.join(oldName, "data");
-
-    try {
-      if (!fs.existsSync(oldDataDir)) continue;
-
-      // Copy contents from old to new (don't rename — old Electron may still reference it)
-      const entries = fs.readdirSync(oldDataDir);
-      fs.mkdirSync(newDataDir, { recursive: true });
-      for (const entry of entries) {
-        const src = path.join(oldDataDir, entry);
-        const dest = path.join(newDataDir, entry);
-        fs.cpSync(src, dest, { recursive: true, force: true });
-      }
-      log.info(`[migration] Copied data from "${oldDataDir}" to "${newDataDir}"`);
-      return;
-    } catch (err) {
-      log.warn("[migration] Failed to migrate old data directory:", err);
-    }
-  }
-}
-
 // ─── App Lifecycle ───────────────────────────────────────────────────
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   const userDataPath = app.getPath("userData");
-  migrateOldDataDir(userDataPath);
   const dataDir = resolveDataDir(userDataPath);
-  const store = new DataStore(dataDir);
-  store.watchForExternalChanges(); // Detect MCP server writes in real-time
-  const getMainWindow = () => mainWindow;
+  const settingsStore = new SettingsStore(dataDir);
+  const settings = await settingsStore.getSettings();
+
+  // Create Supabase-backed store (may fail if credentials not configured yet)
+  let store: SupabaseStore | null = null;
   const pendingNotifications = new Map<string, ReturnType<typeof setTimeout>>();
-  store.on("project-changed", (projectId: string) => {
-    const existing = pendingNotifications.get(projectId);
-    if (existing) clearTimeout(existing);
-    pendingNotifications.set(
-      projectId,
-      setTimeout(() => {
-        pendingNotifications.delete(projectId);
-        mainWindow?.webContents.send("store:project-changed", projectId);
-      }, 300)
-    );
+
+  const attachStoreListener = (s: SupabaseStore) => {
+    s.on("project-changed", (projectId: string) => {
+      const existing = pendingNotifications.get(projectId);
+      if (existing) clearTimeout(existing);
+      pendingNotifications.set(
+        projectId,
+        setTimeout(() => {
+          pendingNotifications.delete(projectId);
+          mainWindow?.webContents.send("store:project-changed", projectId);
+        }, 300)
+      );
+    });
+  };
+
+  if (settings.supabaseUrl && settings.supabaseKey && settings.orgId) {
+    store = new SupabaseStore({
+      supabaseUrl: settings.supabaseUrl,
+      supabaseKey: settings.supabaseKey,
+      orgId: settings.orgId,
+    });
+    attachStoreListener(store);
+  }
+
+  const getMainWindow = () => mainWindow;
+
+  // Listen for settings changes to recreate the store when credentials change
+  ipcMain.on("store:reconnect", async () => {
+    const newSettings = await settingsStore.getSettings();
+    if (newSettings.supabaseUrl && newSettings.supabaseKey && newSettings.orgId) {
+      // Remove listeners from old store to prevent leaks
+      if (store) store.removeAllListeners("project-changed");
+      // Clear any pending debounce timers
+      for (const timer of pendingNotifications.values()) clearTimeout(timer);
+      pendingNotifications.clear();
+
+      store = new SupabaseStore({
+        supabaseUrl: newSettings.supabaseUrl,
+        supabaseKey: newSettings.supabaseKey,
+        orgId: newSettings.orgId,
+      });
+      attachStoreListener(store);
+      log.info("Supabase store reconnected with new credentials");
+    }
   });
 
   // Register all IPC handlers
   setContentSecurityPolicy();
   registerCoreHandlers(dataDir);
-  registerProjectHandlers(store);
-  registerModuleHandlers(store);
-  registerContextHandlers(store, getMainWindow);
-  registerMcpServerHandlers(dataDir, store);
-  registerSettingsHandlers(store);
+  registerProjectHandlers(() => store);
+  registerModuleHandlers(() => store, settingsStore);
+  registerContextHandlers(() => store, settingsStore, getMainWindow);
+  registerMcpServerHandlers(dataDir, () => store, settingsStore);
+  registerSettingsHandlers(settingsStore);
   registerDialogHandlers();
-  registerGitHandlers(store);
+  registerGitHandlers(() => store);
+  registerTeamHandlers(() => store);
 
   createMenu();
   createWindow();

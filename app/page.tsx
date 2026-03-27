@@ -8,7 +8,6 @@ import { StatsCards } from "@/components/dashboard/stats-cards";
 import { RecentProjects } from "@/components/dashboard/recent-projects";
 import { McpStatusCard } from "@/components/dashboard/mcp-status";
 import { useProjects } from "@/hooks/use-projects";
-import { useMcpStatus } from "@/hooks/use-mcp-status";
 import { useElectron } from "@/hooks/use-electron";
 import type { Project } from "@/lib/types";
 
@@ -16,7 +15,6 @@ export default function DashboardPage() {
   const router = useRouter();
   const api = useElectron();
   const { projects, loading } = useProjects();
-  const mcp = useMcpStatus();
   const [totalModules, setTotalModules] = useState(0);
 
   useEffect(() => {
@@ -57,18 +55,13 @@ export default function DashboardPage() {
           <StatsCards
             projects={projects}
             totalModules={totalModules}
-            mcpRunning={mcp.running}
           />
           <div className="grid gap-4 lg:grid-cols-2">
             <RecentProjects
               projects={projects}
               onSelect={(id) => router.push(`/projects?open=${id}`)}
             />
-            <McpStatusCard
-              running={mcp.running}
-              onStart={mcp.start}
-              onStop={mcp.stop}
-            />
+            <McpStatusCard />
           </div>
         </>
       )}

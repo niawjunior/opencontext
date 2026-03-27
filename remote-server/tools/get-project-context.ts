@@ -1,11 +1,11 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { DataStore } from "../../electron/store/data-store.js";
-import type { Project } from "../../electron/store/types.js";
+import type { IDataStore } from "../shared/data-store-interface.js";
+import type { Project } from "../shared/types.js";
 
 export function registerGetProjectContextTool(
   server: McpServer,
-  store: DataStore
+  store: IDataStore
 ): void {
   server.tool(
     "get_project_context",

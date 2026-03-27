@@ -1,17 +1,25 @@
 import { ipcMain } from "electron";
-import type { DataStore } from "../store/data-store";
+import type { SupabaseStore } from "../store/supabase-store";
+import type { SettingsStore } from "../store/settings-store";
 import type { ModuleType } from "../store/types";
 import { GitService } from "../git/git-service";
 import { resolveSourceFiles } from "../git/resolve-source-files";
 
-export function registerModuleHandlers(store: DataStore): void {
+export function registerModuleHandlers(
+  getStore: () => SupabaseStore | null,
+  settingsStore: SettingsStore
+): void {
   ipcMain.handle(
     "modules:add",
     (
       _e,
       projectId: string,
       data: { name: string; type: ModuleType; path: string; context: string }
-    ) => store.addModule(projectId, data)
+    ) => {
+      const store = getStore();
+      if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
+      return store.addModule(projectId, data);
+    }
   );
 
   ipcMain.handle(
@@ -30,11 +38,13 @@ export function registerModuleHandlers(store: DataStore): void {
         staleness: { status: "fresh" | "stale" | "outdated" | "unknown"; commitsBehind: number; lastCheckedAt: string };
       }>
     ) => {
+      const store = getStore();
+      if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
       const result = await store.updateModule(projectId, moduleId, data);
 
       // Auto-rebuild full context when module context changes
       if (data.context !== undefined) {
-        const settings = await store.getSettings();
+        const settings = await settingsStore.getSettings();
         if (settings.autoRebuildContext) {
           try {
             const project = await store.getProject(projectId);
@@ -88,14 +98,19 @@ export function registerModuleHandlers(store: DataStore): void {
 
   ipcMain.handle(
     "modules:delete",
-    (_e, projectId: string, moduleId: string) =>
-      store.deleteModule(projectId, moduleId)
+    (_e, projectId: string, moduleId: string) => {
+      const store = getStore();
+      if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
+      return store.deleteModule(projectId, moduleId);
+    }
   );
 
   // Approve pending context — moves pendingContext → context
   ipcMain.handle(
     "modules:approve-pending",
     async (_e, projectId: string, moduleId: string) => {
+      const store = getStore();
+      if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
       const project = await store.getProject(projectId);
       if (!project) throw new Error(`Project ${projectId} not found`);
       const mod = project.modules.find((m) => m.id === moduleId);
@@ -135,6 +150,8 @@ export function registerModuleHandlers(store: DataStore): void {
   ipcMain.handle(
     "modules:reject-pending",
     async (_e, projectId: string, moduleId: string) => {
+      const store = getStore();
+      if (!store) throw new Error("Database not configured. Set Supabase credentials in Settings.");
       return store.updateModule(projectId, moduleId, {
         pendingContext: "",
         pendingContextMeta: undefined,

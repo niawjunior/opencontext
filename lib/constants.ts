@@ -18,9 +18,6 @@ export const IPC = {
   CONTEXT_SEARCH: "context:search",
 
   // MCP Server
-  MCP_START: "mcp:start",
-  MCP_STOP: "mcp:stop",
-  MCP_STATUS: "mcp:status",
   MCP_GET_CONFIG: "mcp:get-config",
 
   // Settings

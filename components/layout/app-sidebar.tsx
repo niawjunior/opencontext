@@ -5,8 +5,9 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   FolderOpen,
+  Users,
   Settings,
-  Radio,
+  Globe,
 } from "lucide-react";
 import {
   Sidebar,
@@ -22,17 +23,16 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
-import { useMcpStatus } from "@/hooks/use-mcp-status";
 
 const navItems = [
   { title: "Dashboard", href: "/", icon: LayoutDashboard },
   { title: "Projects", href: "/projects", icon: FolderOpen },
+  { title: "Team", href: "/team", icon: Users },
   { title: "Settings", href: "/settings", icon: Settings },
 ];
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const { running } = useMcpStatus();
 
   return (
     <Sidebar>
@@ -76,13 +76,13 @@ export function AppSidebar() {
       </SidebarContent>
       <SidebarFooter className="px-4 py-3">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <Radio className="h-3 w-3" />
+          <Globe className="h-3 w-3" />
           <span>MCP Server</span>
           <Badge
-            variant={running ? "default" : "secondary"}
+            variant="default"
             className="ml-auto text-[10px] px-1.5 py-0"
           >
-            {running ? "Running" : "Stopped"}
+            Remote
           </Badge>
         </div>
       </SidebarFooter>
