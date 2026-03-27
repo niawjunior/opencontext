@@ -4,6 +4,24 @@ AI context management for codebases — let Claude Code read, search, and update
 
 Open Context is a desktop app + remote MCP server that maintains structured context documents for your code modules. Developers connect Claude Code to their projects with a single command, and the system keeps documentation in sync through git hooks, AI analysis, and a human-in-the-loop review flow.
 
+## Screenshots
+
+| Dashboard | Project Modules |
+|-----------|----------------|
+| ![Dashboard](demo/01-dashboard.png) | ![Project Modules](demo/02-project-modules.png) |
+
+| Setup Claude Code | Context Review (Diff) |
+|-------------------|----------------------|
+| ![Setup Claude Code](demo/03-setup-claude-code.png) | ![Context Review](demo/06-context-review.png) |
+
+| Team Management | Coverage |
+|-----------------|----------|
+| ![Team Management](demo/04-team-management.png) | ![Coverage](demo/07-coverage.png) |
+
+| Full Context Document |
+|----------------------|
+| ![Full Context](demo/08-full-context.png) |
+
 ## How It Works
 
 ```
