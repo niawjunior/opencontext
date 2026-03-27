@@ -81,8 +81,8 @@ linux:
 # ─── Auto-Update (GitHub Releases) ────────────────────
 publish:
   provider: github
-  owner: OWNER_PLACEHOLDER
-  repo: open-context
+  owner: niawjunior
+  repo: opencontext
   releaseType: release
 
 # ─── Build Settings ──────────────────────────────────
