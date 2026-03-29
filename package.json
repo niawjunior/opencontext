@@ -19,6 +19,8 @@
     "electron:build:linux": "npm run build && npm run electron:prebuild && electron-builder --config electron-builder.yml --linux",
     "electron:pack": "npm run build && npm run electron:prebuild && electron-builder --config electron-builder.yml --dir",
     "electron:publish": "npm run build && npm run electron:prebuild && electron-builder --config electron-builder.yml --publish always",
+    "test": "vitest",
+    "test:run": "vitest run",
     "prepare": "husky"
   },
   "dependencies": {
@@ -52,10 +54,14 @@
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^6.0.1",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "electron": "^41.0.4",
@@ -64,8 +70,10 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
     "husky": "^9.1.7",
+    "jsdom": "^29.0.1",
     "tailwindcss": "^4",
     "typescript": "^5",
+    "vitest": "^4.1.2",
     "wait-on": "^9.0.4",
     "zod": "^4.3.6"
   }
